@@ -34,6 +34,7 @@ jobs:
 
       - name: Render configs with Secrets
         run: |
+          cd hawego/portal/dock
           envsubst < config.json > server_ready.json
           envsubst < config.template.json > client_ready.json
 
