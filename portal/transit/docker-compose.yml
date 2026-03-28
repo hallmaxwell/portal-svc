@@ -1,0 +1,19 @@
+services:
+  sing-box:
+    build: .
+    container_name: sing-box
+    restart: always
+    network_mode: host
+    env_file: .env
+    volumes:
+      - ./config.json:/config.json
+      - /etc/localtime:/etc/localtime:ro
+  
+  sing-box-backup:
+    image: ghcr.io/sagernet/sing-box:latest
+    container_name: sing-box-backup
+    restart: always
+    network_mode: host
+    volumes:
+      - ./backup.json:/config.json:ro
+      - /etc/localtime:/etc/localtime:ro
