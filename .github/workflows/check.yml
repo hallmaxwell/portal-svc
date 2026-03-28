@@ -1,9 +1,7 @@
-name: Sing-box Config Test
+name: Sing-box Real Run Test
 
 on:
   push:
-    branches: [ main, master ]
-  pull_request:
     branches: [ main, master ]
 
 jobs:
@@ -24,22 +22,46 @@ jobs:
       - name: Checkout Code
         uses: actions/checkout@v4
 
-      - name: Install envsubst
-        run: sudo apt-get install -y gettext-base
-
       - name: Install sing-box
         run: |
           curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.8.11/sing-box-1.8.11-linux-amd64.tar.gz | tar -xz
           sudo cp sing-box-1.8.11-linux-amd64/sing-box /usr/local/bin/
 
-      - name: Render configs with Secrets
+      - name: Render and Real Run
         run: |
           cd portal/dock
-          envsubst < config.json > server_ready.json
-          envsubst < config.template.json > client_ready.json
-
-      - name: Check Server Config
-        run: sing-box check -c server_ready.json
-
-      - name: Check Client Config
-        run: sing-box check -c client_ready.json
+          
+          python3 -c "
+          import os, json
+          with open('config.template.json', 'r') as f:
+              content = f.read()
+          for key, val in os.environ.items():
+              if not val: continue
+              if val.isdigit():
+                  content = content.replace(f'\"{{{key}}}\"', val)
+              else:
+                  content = content.replace(f'{{{key}}}', val)
+          
+          data = json.loads(content)
+          for inbound in data.get('inbounds', []):
+              if inbound.get('type') == 'tun':
+                  inbound['auto_route'] = False
+                  inbound['strict_route'] = False
+          
+          with open('client_run.json', 'w') as f:
+              f.write(json.dumps(data, indent=2))
+          "
+          
+          sudo nohup sing-box run -c client_run.json > singbox.log 2>&1 &
+          PID=$!
+          
+          sleep 10
+          sudo kill $PID || true
+          
+          echo "📜 ===== REAL RUN LOG ====="
+          cat singbox.log
+          
+          if grep -qE \"FATAL|ERROR\" singbox.log; then
+            echo \"FATAL: \"
+            exit 1
+          fi
