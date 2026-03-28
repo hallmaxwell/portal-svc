@@ -1,0 +1,44 @@
+name: Sing-box Config Test
+
+on:
+  push:
+    branches: [ main, master ]
+  pull_request:
+    branches: [ main, master ]
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+      PROXY_PASSWORD: ${{ secrets.PROXY_PASSWORD }}
+      PROXY_USERNAME: ${{ secrets.PROXY_USERNAME }}
+      PUBLIC_KEY: ${{ secrets.PUBLIC_KEY }}
+      SHORT_ID: ${{ secrets.SHORT_ID }}
+      UUID: ${{ secrets.UUID }}
+      DO_IP: ${{ secrets.DO_IP }}
+      PROXY_IP: ${{ secrets.PROXY_IP }}
+      PROXY_PORT: ${{ secrets.PROXY_PORT }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install envsubst
+        run: sudo apt-get install -y gettext-base
+
+      - name: Install sing-box
+        run: |
+          curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.8.11/sing-box-1.8.11-linux-amd64.tar.gz | tar -xz
+          sudo cp sing-box-1.8.11-linux-amd64/sing-box /usr/local/bin/
+
+      - name: Render configs with Secrets
+        run: |
+          envsubst < config.json > server_ready.json
+          envsubst < config.template.json > client_ready.json
+
+      - name: Check Server Config
+        run: sing-box check -c server_ready.json
+
+      - name: Check Client Config
+        run: sing-box check -c client_ready.json
