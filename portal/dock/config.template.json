@@ -29,7 +29,7 @@
         "server": "ali-dns"
       },
       {
-        "query_type": ["A", "AAAA"],
+        "query_type": ["A"],
         "server": "fakeip"
       }
     ],
@@ -129,8 +129,11 @@
         "outbound": "portal"
       },
       {
-        "domain_suffix": ["local", "cn", "bilibili.com", "zhihu.com", "weibo.com"],
-        "domain_keyword": ["baidu", "alipay", "taobao"],
+        "domain_suffix": ["local"],
+        "outbound": "direct"
+      },
+      {
+        "rule_set": ["geosite-cn", "geoip-cn"],
         "outbound": "direct"
       }
     ],
