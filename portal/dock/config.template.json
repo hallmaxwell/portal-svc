@@ -24,16 +24,24 @@
       }
     ],
     "rules": [
-      {
-        "rule_set": ["geosite-cn"],
-        "server": "ali-dns"
-      },
-      {
-        "query_type": ["A"],
-        "server": "fakeip"
-      }
-    ],
-    "final": "google-dns",
+  {
+    "query_type": ["AAAA"],
+    "action": "reject" 
+  },
+  {
+    "rule_set": ["geosite-cn"],
+    "server": "ali-dns"
+  },
+  {
+    "domain_suffix": ["cn", "edu.cn"], 
+    "server": "ali-dns"
+  },
+  {
+    "rule_set": ["geosite-!cn"], 
+    "server": "fakeip"
+  }
+],
+"final": "ali-dns",
     "independent_cache": true
   },
   "inbounds": [
@@ -89,15 +97,22 @@
         "type": "remote",
         "format": "binary",
         "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-cn.srs",
-        "download_detour": "direct"
+        "download_detour": "portal"
       },
       {
         "tag": "geoip-cn",
         "type": "remote",
         "format": "binary",
         "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geoip@rule-set/geoip-cn.srs",
-        "download_detour": "direct"
-      }
+        "download_detour": "portal"
+      },
+      {
+        "tag": "geosite-!cn",
+        "type": "remote",
+        "format": "binary",
+        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-geolocation-!cn.srs",
+        "download_detour": "portal"
+      }    
     ],
     "rules": [
       {
