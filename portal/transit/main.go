@@ -6,6 +6,7 @@ import (
 	"os/exec"
 	"strconv"
 	"strings"
+	"time"
 )
 
 func main() {
@@ -41,9 +42,10 @@ func main() {
 		fmt.Println("Launch failed: ", err)
 		return
 	}
-
-	os.Remove(outPath)
-	fmt.Println("transit.config.run.json cleared, transit node is running.")
-
+	go func() {
+		time.Sleep(2 * time.Second)
+		os.Remove(outPath)
+		fmt.Println("transit.config.run.json cleared, transit node is running.")
+	}()
 	cmd.Wait() 
 }
