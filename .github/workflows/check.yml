@@ -1,0 +1,106 @@
+name: CHECK
+
+on:
+  push:
+    branches: [ main, master ]
+
+jobs:
+  test_configs:
+    runs-on: ubuntu-latest
+    env:
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY }}
+      PROXY_PASSWORD: ${{ secrets.PROXY_PASSWORD }}
+      PROXY_USERNAME: ${{ secrets.PROXY_USERNAME }}
+      PUBLIC_KEY: ${{ secrets.PUBLIC_KEY }}
+      SHORT_ID: ${{ secrets.SHORT_ID }}
+      UUID: ${{ secrets.UUID }}
+      DO_IP: ${{ secrets.DO_IP }}
+      PROXY_IP: ${{ secrets.PROXY_IP }}
+      PROXY_PORT: ${{ secrets.PROXY_PORT }}
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Install sing-box
+        run: |
+          curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.8.11/sing-box-1.8.11-linux-amd64.tar.gz | tar -xz
+          sudo cp sing-box-1.8.11-linux-amd64/sing-box /usr/local/bin/
+
+      - name: Test Local Node (Dock)
+        run: |
+          cd portal/dock
+          echo "Testing dock"
+          
+          python3 -c "
+          import os, json
+          with open('config.template.json', 'r') as f:
+              content = f.read()
+          for key, val in os.environ.items():
+              if not val: continue
+              if val.isdigit():
+                  content = content.replace(f'\"{{{key}}}\"', val)
+              else:
+                  content = content.replace(f'{{{key}}}', val)
+          data = json.loads(content)
+          for inbound in data.get('inbounds', []):
+              if inbound.get('type') == 'tun':
+                  inbound['auto_route'] = False
+                  inbound['strict_route'] = False
+          with open('/tmp/dock_run.json', 'w') as f:
+              f.write(json.dumps(data, indent=2))
+          "
+          
+          sudo nohup sing-box run -c /tmp/dock_run.json > dock.log 2>&1 &
+          PID=$!
+          sleep 10
+          sudo kill $PID || true
+          
+          echo "DOCK RUN LOG: "
+          cat dock.log
+          
+          rm -f /tmp/dock_run.json
+          
+          if grep -qE \"FATAL|ERROR\" dock.log; then
+            echo \"dock tested error: \"
+            exit 1
+          fi
+
+      - name: Test Cloud Node (Transit)
+        run: |
+          cd portal/transit
+          echo "Testing transit"
+          
+          python3 -c "
+          import os, json
+          with open('config.template.json', 'r') as f:
+              content = f.read()
+          for key, val in os.environ.items():
+              if not val: continue
+              if val.isdigit():
+                  content = content.replace(f'\"{{{key}}}\"', val)
+              else:
+                  content = content.replace(f'{{{key}}}', val)
+          data = json.loads(content)
+          for inbound in data.get('inbounds', []):
+              if inbound.get('type') == 'tun':
+                  inbound['auto_route'] = False
+                  inbound['strict_route'] = False
+          with open('/tmp/transit_run.json', 'w') as f:
+              f.write(json.dumps(data, indent=2))
+          "
+          
+          sudo nohup sing-box run -c /tmp/transit_run.json > transit.log 2>&1 &
+          PID=$!
+          sleep 10
+          sudo kill $PID || true
+          
+          echo "TRANSIT RUN LOG: "
+          cat transit.log
+          
+          rm -f /tmp/transit_run.json
+          
+          if grep -qE \"FATAL|ERROR\" transit.log; then
+            echo \"transit teste error: \"
+            exit 1
+          fi

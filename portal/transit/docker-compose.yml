@@ -6,5 +6,5 @@ services:
     network_mode: host
     env_file: .env
     volumes:
-      - ./config.json:/config.json
+      - ./config.template.json:/config.template.json
       - /etc/localtime:/etc/localtime:ro
