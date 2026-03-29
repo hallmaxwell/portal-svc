@@ -67,6 +67,14 @@
         "download_detour": "direct-out"
       },
       {
+        "domain_suffix": [
+            "jsdelivr.net",
+            "githubusercontent.com",
+            "github.com"
+            ],
+      "outbound": "direct-out"
+      },
+      {
         "tag": "geosite-ads",
         "type": "remote",
         "format": "binary",
