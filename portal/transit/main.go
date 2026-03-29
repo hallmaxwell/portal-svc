@@ -1,20 +1,25 @@
 package main
 
 import (
+	"fmt"
 	"os"
 	"os/exec"
-	"strings"
 	"strconv"
+	"strings"
 )
 
 func main() {
-	data, err := os.ReadFile("/config.json")
-	if err != nil { panic(err) }
+	data, err := os.ReadFile("/config.template.json")
+	if err != nil {
+		panic(err)
+	}
 	content := string(data)
 
 	for _, env := range os.Environ() {
 		pair := strings.SplitN(env, "=", 2)
-		if len(pair) != 2 { continue }
+		if len(pair) != 2 {
+			continue
+		}
 		key, val := pair[0], strings.Trim(strings.TrimSpace(pair[1]), `"'`)
 
 		if _, err := strconv.Atoi(val); err == nil {
@@ -24,8 +29,21 @@ func main() {
 		}
 	}
 
-	os.WriteFile("/tmp/config_run.json", []byte(content), 0644)
-	cmd := exec.Command("sing-box", "run", "-c", "/tmp/config_run.json")
+	outPath := "/tmp/transit.config.run.json"
+	os.WriteFile(outPath, []byte(content), 0644)
+
+	cmd := exec.Command("sing-box", "run", "-c", outPath)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
-	cmd.Run()
+
+	fmt.Println("Transit Node Launching...")
+	
+	if err := cmd.Start(); err != nil {
+		fmt.Println("Launch failed: ", err)
+		return
+	}
+
+	os.Remove(outPath)
+	fmt.Println("transit.config.run.json cleared, transit node is running.")
+
+	cmd.Wait() 
 }
