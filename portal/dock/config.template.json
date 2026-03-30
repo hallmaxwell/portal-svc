@@ -6,42 +6,30 @@
   "dns": {
     "servers": [
       {
-        "tag": "ali-dns",
-        "type": "udp",
-        "server": "223.5.5.5"
+        "tag": "dns-remote",
+        "address": "https://8.8.8.8/dns-query",
+        "detour": "transit"
       },
       {
-        "tag": "google-dns",
-        "type": "udp",
-        "server": "8.8.8.8",
-        "detour": "portal"
+        "tag": "dns-direct",
+        "address": "223.5.5.5",
+        "detour": "direct"
       },
       {
-        "tag": "fakeip",
-        "type": "fakeip",
-        "inet4_range": "198.18.0.0/15",
-        "inet6_range": "fc00::/18"
+        "tag": "dns-fakeip",
+        "address": "fakeip"
       }
     ],
     "rules": [
-  {
-    "query_type": ["AAAA"],
-    "action": "reject" 
-  },
-  {
-    "rule_set": ["geosite-cn"],
-    "server": "ali-dns"
-  },
-  {
-    "domain_suffix": ["cn", "edu.cn"], 
-    "server": "ali-dns"
-  },
-  {
-    "rule_set": ["geosite-!cn"], 
-    "server": "fakeip"
-  }
-],
-"final": "ali-dns",
+      { "query_type": [ "AAAA" ], "server": "dns-direct", "action": "reject" },
+      { "rule_set": "geosite-cn", "server": "dns-direct" },
+      { "domain_suffix": [ "cn", "edu.cn" ], "server": "dns-direct" },
+      { "query_type": [ "A" ], "server": "dns-fakeip" }
+    ],
+    "fakeip": {
+      "inet4_range": "198.18.0.0/15"
+    },
+    "final": "dns-direct",
     "independent_cache": true
   },
   "inbounds": [
@@ -49,10 +37,10 @@
       "type": "tun",
       "tag": "tun-in",
       "interface_name": "singbox-tun",
-      "address": ["172.19.0.1/30"],
+      "address": [ "172.19.0.1/30" ],
       "mtu": 1400,
-      "auto_route": true, 
-      "strict_route": true, 
+      "auto_route": true,
+      "strict_route": true,
       "stack": "gvisor",
       "sniff": true,
       "sniff_override_destination": true
@@ -61,7 +49,7 @@
   "outbounds": [
     {
       "type": "vless",
-      "tag": "portal",
+      "tag": "transit",
       "server": "{DO_IP}",
       "server_port": 443,
       "uuid": "{UUID}",
@@ -69,10 +57,7 @@
       "tls": {
         "enabled": true,
         "server_name": "www.microsoft.com",
-        "utls": {
-          "enabled": true,
-          "fingerprint": "chrome"
-        },
+        "utls": { "enabled": true, "fingerprint": "chrome" },
         "reality": {
           "enabled": true,
           "public_key": "{PUBLIC_KEY}",
@@ -80,79 +65,42 @@
         }
       }
     },
-    {
-      "type": "direct",
-      "tag": "direct"
-    },
-    {
-      "type": "block",
-      "tag": "block"
-    }
+    { "type": "direct", "tag": "direct" },
+    { "type": "dns", "tag": "dns-out" },
+    { "type": "block", "tag": "block" }
   ],
   "route": {
-    "default_domain_resolver": "ali-dns",
     "rule_set": [
       {
         "tag": "geosite-cn",
         "type": "remote",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-cn.srs",
-        "download_detour": "portal"
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
+        "download_detour": "transit"
       },
       {
         "tag": "geoip-cn",
         "type": "remote",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geoip@rule-set/geoip-cn.srs",
-        "download_detour": "portal"
-      },
-      {
-        "tag": "geosite-!cn",
-        "type": "remote",
-        "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-geolocation-!cn.srs",
-        "download_detour": "portal"
-      }    
-    ],
-    "rules": [
-      {
-        "protocol": "dns",
-        "action": "hijack-dns"
-      },
-      {
-        "ip_cidr": [
-          "137.184.247.234/32", 
-          "192.168.0.0/16", 
-          "10.0.0.0/8", 
-          "172.16.0.0/12", 
-          "127.0.0.0/8"
-        ],
-        "outbound": "direct"
-      },
-      {
-        "domain_keyword": ["stun"],
-        "domain_suffix": [
-          "webrtc.org", 
-          "google.com", 
-          "youtube.com", 
-          "github.com", 
-          "telegram.org", 
-          "twitter.com", 
-          "openai.com", 
-          "adobe.com"
-        ],
-        "outbound": "portal"
-      },
-      {
-        "domain_suffix": ["local"],
-        "outbound": "direct"
-      },
-      {
-        "rule_set": ["geosite-cn", "geoip-cn"],
-        "outbound": "direct"
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
+        "download_detour": "transit"
       }
     ],
-    "final": "portal",
+    "rules": [
+      { "protocol": "dns", "outbound": "dns-out" },
+      {
+        "ip_cidr": [ 
+          "137.184.247.234/32", 
+          "192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12", "127.0.0.0/8" 
+        ],
+        "outbound": "direct"
+      },
+      { "rule_set": "geosite-cn", "outbound": "direct" },
+      { "rule_set": "geoip-cn", "outbound": "direct" },
+      { "domain_suffix": [ "cn", "edu.cn" ], "outbound": "direct" },
+      { "domain_suffix": [ "local" ], "outbound": "direct" }
+    ],
+    "final": "transit",
     "auto_detect_interface": true
   }
 }

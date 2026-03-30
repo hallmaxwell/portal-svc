@@ -3,29 +3,30 @@
     "level": "info",
     "timestamp": true
   },
+  "dns": {
+    "servers": [
+      { "tag": "dns-google", "address": "8.8.8.8" }
+    ],
+    "rules": [
+      { "query_type": [ "AAAA" ], "action": "reject" }
+    ],
+    "final": "dns-google"
+  },
   "inbounds": [
     {
       "type": "vless",
       "tag": "vless-in",
       "listen": "::",
       "listen_port": 443,
-      "users": [
-        {
-          "uuid": "{UUID}",
-          "flow": "xtls-rprx-vision"
-        }
-      ],
+      "users": [ { "uuid": "{UUID}", "flow": "xtls-rprx-vision" } ],
       "tls": {
         "enabled": true,
         "server_name": "www.microsoft.com",
         "reality": {
           "enabled": true,
-          "handshake": {
-            "server": "www.microsoft.com",
-            "server_port": 443
-          },
+          "handshake": { "server": "www.microsoft.com", "server_port": 443 },
           "private_key": "{PRIVATE_KEY}",
-          "short_id": ["{SHORT_ID}"]
+          "short_id": [ "{SHORT_ID}" ]
         }
       },
       "sniff": true,
@@ -35,79 +36,42 @@
   "outbounds": [
     {
       "type": "socks",
-      "tag": "iproyal-out",
+      "tag": "portal-out",
       "server": "{PROXY_IP}",
       "server_port": "{PROXY_PORT}",
       "username": "{PROXY_USERNAME}",
       "password": "{PROXY_PASSWORD}"
     },
-    {
-      "type": "direct",
-      "tag": "direct-out"
-    },
-    {
-      "type": "block",
-      "tag": "block-out"
-    }
+    { "type": "direct", "tag": "do-out" },
+    { "type": "dns", "tag": "dns-out" },
+    { "type": "block", "tag": "block-out" }
   ],
   "route": {
     "rule_set": [
       {
-        "tag": "geosite-google",
-        "type": "remote",
-        "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-google.srs",
-        "download_detour": "direct-out"
-      },
-      {
         "tag": "geosite-youtube",
         "type": "remote",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-youtube.srs",
-        "download_detour": "direct-out"
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-youtube.srs",
+        "download_detour": "do-out"
       },
       {
         "tag": "geosite-ads",
         "type": "remote",
         "format": "binary",
-        "url": "https://cdn.jsdelivr.net/gh/SagerNet/sing-geosite@rule-set/geosite-category-ads-all.srs",
-        "download_detour": "direct-out"
+        "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-category-ads-all.srs",
+        "download_detour": "do-out"
       }
-      
     ],
     "rules": [
+      { "protocol": "dns", "outbound": "dns-out" },
+      { "rule_set": "geosite-ads", "action": "reject" },
       {
-        "protocol": "dns",
-        "action": "hijack-dns"
+        "domain_suffix": [ "github.com", "githubusercontent.com"],
+        "outbound": "do-out"
       },
-      {
-        "rule_set": "geosite-ads",
-        "action": "reject",
-        "method": "drop"
-      },
-      {
-        "domain_suffix": [
-            "jsdelivr.net",
-            "githubusercontent.com",
-            "github.com"
-            ],
-      "outbound": "direct-out"
-      },
-      {
-        "rule_set": ["geosite-youtube"],
-        "outbound": "direct-out"
-      }
+      { "rule_set": [ "geosite-youtube" ], "outbound": "do-out" }
     ],
-    "final": "iproyal-out"
-  },
-  "dns": {
-    "servers": [
-      {
-        "tag": "google-dns",
-        "type": "udp",
-        "server": "8.8.8.8"
-      }
-    ],
-    "final": "google-dns"
+    "final": "portal-out"
   }
 }
