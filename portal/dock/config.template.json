@@ -23,20 +23,29 @@
     ],
     "rules": [
       {
-        "query_type": [ "AAAA" ],
+        "query_type": [
+          "AAAA"
+        ],
         "server": "dns-direct",
         "action": "reject"
       },
       {
-        "rule_set": [ "geosite-cn" ],
+        "rule_set": [
+          "geosite-cn"
+        ],
         "server": "dns-direct"
       },
       {
-        "domain_suffix": [ ".cn", ".edu.cn" ],
+        "domain_suffix": [
+          ".cn",
+          ".edu.cn"
+        ],
         "server": "dns-direct"
       },
       {
-        "query_type": [ "A" ],
+        "query_type": [
+          "A"
+        ],
         "server": "dns-fakeip"
       }
     ],
@@ -48,7 +57,9 @@
       "type": "tun",
       "tag": "tun-in",
       "interface_name": "singbox-tun",
-      "address": [ "172.19.0.1/30" ],
+      "address": [
+        "172.19.0.1/30"
+      ],
       "mtu": 1400,
       "auto_route": true,
       "strict_route": true,
@@ -125,11 +136,16 @@
         "outbound": "direct"
       },
       {
-        "rule_set": [ "geosite-cn", "geoip-cn" ],
+        "rule_set": [
+          "geosite-cn",
+          "geoip-cn"
+        ],
         "outbound": "direct"
       },
       {
-        "domain_suffix": [ ".local" ],
+        "domain_suffix": [
+          ".local"
+        ],
         "outbound": "direct"
       }
     ],
