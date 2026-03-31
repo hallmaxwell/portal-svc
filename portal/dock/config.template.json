@@ -97,10 +97,6 @@
       "tag": "direct"
     },
     {
-      "type": "dns",
-      "tag": "transit-out"
-    },
-    {
       "type": "block",
       "tag": "block"
     }
@@ -125,7 +121,7 @@
     "rules": [
       {
         "protocol": "dns",
-        "outbound": "transit-out"
+        "action": "hijack-dns"
       },
       {
         "ip_cidr": [

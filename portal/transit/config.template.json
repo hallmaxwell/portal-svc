@@ -67,10 +67,6 @@
       "tag": "do-out"
     },
     {
-      "type": "dns",
-      "tag": "dns-out"
-    },
-    {
       "type": "block",
       "tag": "block-out"
     }
@@ -95,7 +91,7 @@
     "rules": [
       {
         "protocol": "dns",
-        "outbound": "dns-out"
+        "action": "hijack-dns"
       },
       {
         "rule_set": [
