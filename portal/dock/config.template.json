@@ -7,7 +7,7 @@
     "servers": [
       {
         "tag": "dns-direct",
-        "address": "223.5.5.5",
+        "address": "udp://223.5.5.5",
         "detour": "direct"
       },
       {
@@ -17,7 +17,8 @@
       },
       {
         "tag": "dns-fakeip",
-        "address": "fakeip"
+        "type": "fakeip",
+        "inet4_range": "198.18.0.0/15"
       }
     ],
     "rules": [
@@ -39,9 +40,6 @@
         "server": "dns-fakeip"
       }
     ],
-    "fakeip": {
-      "inet4_range": "198.18.0.0/15"
-    },
     "independent_cache": true,
     "final": "dns-direct"
   },
