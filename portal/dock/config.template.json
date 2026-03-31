@@ -101,6 +101,7 @@
     }
   ],
   "route": {
+    "default_domain_resolver": "dns-direct",
     "rule_set": [
       {
         "tag": "geosite-cn",

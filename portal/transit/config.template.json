@@ -71,6 +71,7 @@
     }
   ],
   "route": {
+    "default_domain_resolver": "dns-google",
     "rule_set": [
       {
         "tag": "geosite-youtube",
