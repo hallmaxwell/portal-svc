@@ -5,10 +5,17 @@
   },
   "dns": {
     "servers": [
-      { "tag": "dns-google", "address": "8.8.8.8" }
+      {
+        "tag": "dns-google",
+        "address": "8.8.8.8",
+        "detour": "do-out"
+      }
     ],
     "rules": [
-      { "query_type": [ "AAAA" ], "action": "reject" }
+      {
+        "query_type": [ "AAAA" ],
+        "action": "reject"
+      }
     ],
     "final": "dns-google"
   },
@@ -18,13 +25,21 @@
       "tag": "vless-in",
       "listen": "::",
       "listen_port": 443,
-      "users": [ { "uuid": "{UUID}", "flow": "xtls-rprx-vision" } ],
+      "users": [
+        {
+          "uuid": "{UUID}",
+          "flow": "xtls-rprx-vision"
+        }
+      ],
       "tls": {
         "enabled": true,
         "server_name": "www.microsoft.com",
         "reality": {
           "enabled": true,
-          "handshake": { "server": "www.microsoft.com", "server_port": 443 },
+          "handshake": {
+            "server": "www.microsoft.com",
+            "server_port": 443
+          },
           "private_key": "{PRIVATE_KEY}",
           "short_id": [ "{SHORT_ID}" ]
         }
@@ -42,9 +57,18 @@
       "username": "{PROXY_USERNAME}",
       "password": "{PROXY_PASSWORD}"
     },
-    { "type": "direct", "tag": "do-out" },
-    { "type": "dns", "tag": "dns-out" },
-    { "type": "block", "tag": "block-out" }
+    {
+      "type": "direct",
+      "tag": "do-out"
+    },
+    {
+      "type": "dns",
+      "tag": "dns-out"
+    },
+    {
+      "type": "block",
+      "tag": "block-out"
+    }
   ],
   "route": {
     "rule_set": [
@@ -64,13 +88,25 @@
       }
     ],
     "rules": [
-      { "protocol": "dns", "outbound": "dns-out" },
-      { "rule_set": "geosite-ads", "action": "reject" },
       {
-        "domain_suffix": [ "github.com", "githubusercontent.com"],
+        "protocol": "dns",
+        "outbound": "dns-out"
+      },
+      {
+        "rule_set": [ "geosite-ads" ],
+        "action": "reject"
+      },
+      {
+        "domain_suffix": [
+          "github.com",
+          "githubusercontent.com"
+        ],
         "outbound": "do-out"
       },
-      { "rule_set": [ "geosite-youtube" ], "outbound": "do-out" }
+      {
+        "rule_set": [ "geosite-youtube" ],
+        "outbound": "do-out"
+      }
     ],
     "final": "portal-out"
   }

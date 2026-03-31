@@ -6,14 +6,14 @@
   "dns": {
     "servers": [
       {
-        "tag": "dns-remote",
-        "address": "https://8.8.8.8/dns-query",
-        "detour": "transit"
-      },
-      {
         "tag": "dns-direct",
         "address": "223.5.5.5",
         "detour": "direct"
+      },
+      {
+        "tag": "dns-remote",
+        "address": "https://8.8.8.8/dns-query",
+        "detour": "transit"
       },
       {
         "tag": "dns-fakeip",
@@ -21,16 +21,29 @@
       }
     ],
     "rules": [
-      { "query_type": [ "AAAA" ], "server": "dns-direct", "action": "reject" },
-      { "rule_set": "geosite-cn", "server": "dns-direct" },
-      { "domain_suffix": [ "cn", "edu.cn" ], "server": "dns-direct" },
-      { "query_type": [ "A" ], "server": "dns-fakeip" }
+      {
+        "query_type": [ "AAAA" ],
+        "server": "dns-direct",
+        "action": "reject"
+      },
+      {
+        "rule_set": [ "geosite-cn" ],
+        "server": "dns-direct"
+      },
+      {
+        "domain_suffix": [ ".cn", ".edu.cn" ],
+        "server": "dns-direct"
+      },
+      {
+        "query_type": [ "A" ],
+        "server": "dns-fakeip"
+      }
     ],
     "fakeip": {
       "inet4_range": "198.18.0.0/15"
     },
-    "final": "dns-direct",
-    "independent_cache": true
+    "independent_cache": true,
+    "final": "dns-direct"
   },
   "inbounds": [
     {
@@ -57,7 +70,10 @@
       "tls": {
         "enabled": true,
         "server_name": "www.microsoft.com",
-        "utls": { "enabled": true, "fingerprint": "chrome" },
+        "utls": {
+          "enabled": true,
+          "fingerprint": "chrome"
+        },
         "reality": {
           "enabled": true,
           "public_key": "{PUBLIC_KEY}",
@@ -65,9 +81,18 @@
         }
       }
     },
-    { "type": "direct", "tag": "direct" },
-    { "type": "dns", "tag": "dns-out" },
-    { "type": "block", "tag": "block" }
+    {
+      "type": "direct",
+      "tag": "direct"
+    },
+    {
+      "type": "dns",
+      "tag": "transit-out"
+    },
+    {
+      "type": "block",
+      "tag": "block"
+    }
   ],
   "route": {
     "rule_set": [
@@ -87,18 +112,28 @@
       }
     ],
     "rules": [
-      { "protocol": "dns", "outbound": "dns-out" },
       {
-        "ip_cidr": [ 
-          "137.184.247.234/32", 
-          "192.168.0.0/16", "10.0.0.0/8", "172.16.0.0/12", "127.0.0.0/8" 
+        "protocol": "dns",
+        "outbound": "transit-out"
+      },
+      {
+        "ip_cidr": [
+          "137.184.247.234/32",
+          "192.168.0.0/16",
+          "10.0.0.0/8",
+          "172.16.0.0/12",
+          "127.0.0.0/8"
         ],
         "outbound": "direct"
       },
-      { "rule_set": "geosite-cn", "outbound": "direct" },
-      { "rule_set": "geoip-cn", "outbound": "direct" },
-      { "domain_suffix": [ "cn", "edu.cn" ], "outbound": "direct" },
-      { "domain_suffix": [ "local" ], "outbound": "direct" }
+      {
+        "rule_set": [ "geosite-cn", "geoip-cn" ],
+        "outbound": "direct"
+      },
+      {
+        "domain_suffix": [ ".local" ],
+        "outbound": "direct"
+      }
     ],
     "final": "transit",
     "auto_detect_interface": true
