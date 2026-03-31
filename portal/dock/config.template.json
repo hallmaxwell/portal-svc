@@ -7,7 +7,7 @@
     "servers": [
       {
         "tag": "dns-direct",
-        "address": "udp://223.5.5.5",
+        "address": "223.5.5.5",
         "detour": "direct"
       },
       {
@@ -49,8 +49,8 @@
         "server": "dns-fakeip"
       }
     ],
-    "independent_cache": true,
-    "final": "dns-direct"
+    "final": "dns-direct",
+    "independent_cache": true
   },
   "inbounds": [
     {
