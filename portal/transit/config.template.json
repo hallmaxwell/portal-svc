@@ -7,7 +7,8 @@
     "servers": [
       {
         "tag": "dns-google",
-        "address": "8.8.8.8",
+        "type": "udp",
+        "server": "8.8.8.8",
         "detour": "do-out"
       }
     ],
