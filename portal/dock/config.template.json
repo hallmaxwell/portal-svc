@@ -124,6 +124,10 @@
         "action": "hijack-dns"
       },
       {
+        "process_name": "{BYPASS_APPS}",
+        "outbound": "direct"
+      },
+      {
         "ip_cidr": [
           "137.184.247.234/32",
           "192.168.0.0/16",
