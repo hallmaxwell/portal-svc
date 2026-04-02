@@ -17,6 +17,8 @@ jobs:
       DO_IP: ${{ secrets.DO_IP }}
       PROXY_IP: ${{ secrets.PROXY_IP }}
       PROXY_PORT: ${{ secrets.PROXY_PORT }}
+      # 建议在这里加上你新增加的白名单测试变量，或者在 GitHub Secrets 中配置
+      BYPASS_DOMAINS: '["ydshengxue.com"]'
 
     steps:
       - name: Checkout Code
@@ -31,77 +33,147 @@ jobs:
       - name: Test Local Node (Dock)
         run: |
           cd portal/dock
-          echo "Testing dock"
+          echo "==== Testing dock configuration ===="
           
           python3 -c "
           import os, json
+          
+          # 1. 完美对齐 Go 脚本的智能判断逻辑
+          def is_raw_json(val):
+              val = val.strip()
+              if val.isdigit(): return True
+              if val.lower() in ['true', 'false']: return True
+              if val.startswith('[') and val.endswith(']'): return True
+              if val.startswith('{') and val.endswith('}'): return True
+              try:
+                  float(val)
+                  return True
+              except ValueError:
+                  pass
+              return False
+
           with open('config.template.json', 'r') as f:
               content = f.read()
+              
           for key, val in os.environ.items():
               if not val: continue
-              if val.isdigit():
+              val = val.strip('\"\'')
+              
+              if is_raw_json(val):
                   content = content.replace(f'\"{{{key}}}\"', val)
+                  content = content.replace(f'{{{key}}}', val)
               else:
                   content = content.replace(f'{{{key}}}', val)
-          data = json.loads(content)
-          for inbound in data.get('inbounds', []):
+          
+          try:
+              data = json.loads(content)
+          except json.JSONDecodeError as e:
+              print('JSON Decode Error! Generated invalid JSON configuration.')
+              print(content)
+              exit(1)
+              
+          for inbound in data.get('inbounds',[]):
               if inbound.get('type') == 'tun':
                   inbound['auto_route'] = False
                   inbound['strict_route'] = False
+                  
           with open('/tmp/dock_run.json', 'w') as f:
-              f.write(json.dumps(data, indent=2))
+              json.dump(data, f, indent=2)
           "
           
-          sudo nohup sing-box run -c /tmp/dock_run.json > dock.log 2>&1 &
-          PID=$!
-          sleep 10
-          sudo kill $PID || true
+          # 2. 原生配置检验：这能立刻查出路由 tag 缺失、格式错误等问题
+          echo "Running sing-box check..."
+          sing-box check -c /tmp/dock_run.json
+          
+          # 3. 真实运行时检测：让节点跑 5 秒，如果中途崩溃 CI 会立即报错
+          echo "Running sing-box runtime test..."
+          sudo timeout 5 sing-box run -c /tmp/dock_run.json > dock.log 2>&1 || STATUS=$?
           
           echo "DOCK RUN LOG: "
           cat dock.log
           
           rm -f /tmp/dock_run.json
           
-          if grep -qE \"FATAL|ERROR\" dock.log; then
-            echo \"dock tested error: \"
+          # 状态码 124 代表 timeout 成功杀死了一个一直健康运行的进程
+          # 状态码 0 代表程序自己正常退出了（通常 sing-box 不会自己退出）
+          if[ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
+            echo "dock tested error: sing-box crashed during startup!"
+            exit 1
+          fi
+          
+          # 4. 修复了原来 grep 的转义语法错误
+          if grep -qE "FATAL|ERROR" dock.log; then
+            echo "dock tested error: Found FATAL or ERROR in logs!"
             exit 1
           fi
 
       - name: Test Cloud Node (Transit)
         run: |
           cd portal/transit
-          echo "Testing transit"
+          echo "==== Testing transit configuration ===="
           
           python3 -c "
           import os, json
+          
+          def is_raw_json(val):
+              val = val.strip()
+              if val.isdigit(): return True
+              if val.lower() in ['true', 'false']: return True
+              if val.startswith('[') and val.endswith(']'): return True
+              if val.startswith('{') and val.endswith('}'): return True
+              try:
+                  float(val)
+                  return True
+              except ValueError:
+                  pass
+              return False
+
           with open('config.template.json', 'r') as f:
               content = f.read()
+              
           for key, val in os.environ.items():
               if not val: continue
-              if val.isdigit():
+              val = val.strip('\"\'')
+              
+              if is_raw_json(val):
                   content = content.replace(f'\"{{{key}}}\"', val)
+                  content = content.replace(f'{{{key}}}', val)
               else:
                   content = content.replace(f'{{{key}}}', val)
-          data = json.loads(content)
-          for inbound in data.get('inbounds', []):
+          
+          try:
+              data = json.loads(content)
+          except json.JSONDecodeError as e:
+              print('JSON Decode Error! Generated invalid JSON configuration.')
+              print(content)
+              exit(1)
+              
+          for inbound in data.get('inbounds',[]):
               if inbound.get('type') == 'tun':
                   inbound['auto_route'] = False
                   inbound['strict_route'] = False
+                  
           with open('/tmp/transit_run.json', 'w') as f:
-              f.write(json.dumps(data, indent=2))
+              json.dump(data, f, indent=2)
           "
           
-          sudo nohup sing-box run -c /tmp/transit_run.json > transit.log 2>&1 &
-          PID=$!
-          sleep 10
-          sudo kill $PID || true
+          echo "Running sing-box check..."
+          sing-box check -c /tmp/transit_run.json
+          
+          echo "Running sing-box runtime test..."
+          sudo timeout 5 sing-box run -c /tmp/transit_run.json > transit.log 2>&1 || STATUS=$?
           
           echo "TRANSIT RUN LOG: "
           cat transit.log
           
           rm -f /tmp/transit_run.json
           
-          if grep -qE \"FATAL|ERROR\" transit.log; then
-            echo \"transit teste error: \"
+          if [ "${STATUS:-0}" -ne 124 ] &&[ "${STATUS:-0}" -ne 0 ]; then
+            echo "transit tested error: sing-box crashed during startup!"
+            exit 1
+          fi
+          
+          if grep -qE "FATAL|ERROR" transit.log; then
+            echo "transit tested error: Found FATAL or ERROR in logs!"
             exit 1
           fi
