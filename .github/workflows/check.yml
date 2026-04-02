@@ -17,7 +17,6 @@ jobs:
       DO_IP: ${{ secrets.DO_IP }}
       PROXY_IP: ${{ secrets.PROXY_IP }}
       PROXY_PORT: ${{ secrets.PROXY_PORT }}
-      # 建议在这里加上你新增加的白名单测试变量，或者在 GitHub Secrets 中配置
       BYPASS_DOMAINS: '["ydshengxue.com"]'
 
     steps:
@@ -38,7 +37,6 @@ jobs:
           python3 -c "
           import os, json
           
-          # 1. 完美对齐 Go 脚本的智能判断逻辑
           def is_raw_json(val):
               val = val.strip()
               if val.isdigit(): return True
@@ -81,11 +79,9 @@ jobs:
               json.dump(data, f, indent=2)
           "
           
-          # 2. 原生配置检验：这能立刻查出路由 tag 缺失、格式错误等问题
           echo "Running sing-box check..."
           sing-box check -c /tmp/dock_run.json
           
-          # 3. 真实运行时检测：让节点跑 5 秒，如果中途崩溃 CI 会立即报错
           echo "Running sing-box runtime test..."
           sudo timeout 5 sing-box run -c /tmp/dock_run.json > dock.log 2>&1 || STATUS=$?
           
@@ -94,14 +90,11 @@ jobs:
           
           rm -f /tmp/dock_run.json
           
-          # 状态码 124 代表 timeout 成功杀死了一个一直健康运行的进程
-          # 状态码 0 代表程序自己正常退出了（通常 sing-box 不会自己退出）
           if[ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
             echo "dock tested error: sing-box crashed during startup!"
             exit 1
           fi
           
-          # 4. 修复了原来 grep 的转义语法错误
           if grep -qE "FATAL|ERROR" dock.log; then
             echo "dock tested error: Found FATAL or ERROR in logs!"
             exit 1
