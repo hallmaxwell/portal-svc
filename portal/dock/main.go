@@ -10,10 +10,30 @@ import (
 	"strings"
 )
 
+func isRawJSONValue(val string) bool {
+	if _, err := strconv.Atoi(val); err == nil {
+		return true
+	}
+	if _, err := strconv.ParseFloat(val, 64); err == nil {
+		return true
+	}
+	if val == "true" || val == "false" {
+		return true
+	}
+	if strings.HasPrefix(val, "[") && strings.HasSuffix(val, "]") {
+		return true
+	}
+	if strings.HasPrefix(val, "{") && strings.HasSuffix(val, "}") {
+		return true
+	}
+	
+	return false
+}
+
 func main() {
 	baseDir, err := os.Getwd()
 	if err != nil {
-		baseDir = "." 
+		baseDir = "."
 	}
 
 	envPath := filepath.Join(baseDir, ".env")
@@ -43,8 +63,9 @@ func main() {
 	tempData, _ := os.ReadFile(templatePath)
 	content := string(tempData)
 	for key, val := range envMap {
-		if _, err := strconv.Atoi(val); err == nil {
+		if isRawJSONValue(val) {
 			content = strings.ReplaceAll(content, `"{`+key+`}"`, val)
+			content = strings.ReplaceAll(content, `{`+key+`}`, val)
 		} else {
 			content = strings.ReplaceAll(content, `{`+key+`}`, val)
 		}
@@ -52,7 +73,7 @@ func main() {
 
 	os.WriteFile(outPath, []byte(content), 0644)
 	cmd := exec.Command("sing-box", "run", "-c", outPath)
-	cmd.Dir = baseDir 
+	cmd.Dir = baseDir
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
