@@ -24,8 +24,9 @@ jobs:
 
       - name: Install sing-box
         run: |
-          curl -fsSL https://github.com/SagerNet/sing-box/releases/download/v1.8.11/sing-box-1.8.11-linux-amd64.tar.gz | tar -xz
-          sudo cp sing-box-1.8.11-linux-amd64/sing-box /usr/local/bin/
+          LATEST_VERSION=$(curl -s https://api.github.com/repos/SagerNet/sing-box/releases/latest | grep tag_name | cut -d '"' -f 4 | sed 's/v//')
+          curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${LATEST_VERSION}/sing-box-${LATEST_VERSION}-linux-amd64.tar.gz" | tar -xz
+          sudo cp sing-box-${LATEST_VERSION}-linux-amd64/sing-box /usr/local/bin/
 
       - name: Test Local Node (Dock)
         run: |
