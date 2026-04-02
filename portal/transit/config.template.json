@@ -47,9 +47,7 @@
             "{SHORT_ID}"
           ]
         }
-      },
-      "sniff": true,
-      "sniff_override_destination": true
+      }
     }
   ],
   "outbounds": [
@@ -89,6 +87,9 @@
       }
     ],
     "rules": [
+      {
+        "action": "sniff"
+      },
       {
         "protocol": "dns",
         "action": "hijack-dns"

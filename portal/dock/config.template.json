@@ -64,9 +64,7 @@
       "mtu": 1400,
       "auto_route": true,
       "strict_route": true,
-      "stack": "gvisor",
-      "sniff": true,
-      "sniff_override_destination": true
+      "stack": "gvisor"
     }
   ],
   "outbounds": [
@@ -119,6 +117,7 @@
       }
     ],
     "rules": [
+      {"action": "sniff"},
       {
         "domain_suffix": "{BYPASS_DOMAINS}",
         "outbound": "direct" 
