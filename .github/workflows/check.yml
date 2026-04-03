@@ -8,10 +8,10 @@ jobs:
   test_configs:
     runs-on: ubuntu-latest
     env:
-      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY || 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' }}
+      PRIVATE_KEY: ${{ secrets.PRIVATE_KEY || 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }}
       PROXY_PASSWORD: ${{ secrets.PROXY_PASSWORD || 'mock_password' }}
       PROXY_USERNAME: ${{ secrets.PROXY_USERNAME || 'mock_username' }}
-      PUBLIC_KEY: ${{ secrets.PUBLIC_KEY || 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA=' }}
+      PUBLIC_KEY: ${{ secrets.PUBLIC_KEY || 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }}
       SHORT_ID: ${{ secrets.SHORT_ID || '0123456789abcdef' }}
       UUID: ${{ secrets.UUID || '00000000-0000-0000-0000-000000000000' }}
       DO_IP: ${{ secrets.DO_IP || '127.0.0.1' }}
@@ -49,6 +49,7 @@ jobs:
               except ValueError:
                   pass
               return False
+              
           with open('config.template.json', 'r') as f:
               content = f.read()
               
@@ -89,7 +90,7 @@ jobs:
           
           rm -f /tmp/dock_run.json
           
-          if [ "${STATUS:-0}" -ne 124 ] &&[ "${STATUS:-0}" -ne 0 ]; then
+          if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
             echo "dock tested error: sing-box crashed during startup!"
             exit 1
           fi
@@ -110,7 +111,7 @@ jobs:
           def is_raw_json(val):
               val = val.strip()
               if val.isdigit(): return True
-              if val.lower() in ['true', 'false']: return True
+              if val.lower() in['true', 'false']: return True
               if val.startswith('[') and val.endswith(']'): return True
               if val.startswith('{') and val.endswith('}'): return True
               try:
@@ -119,6 +120,7 @@ jobs:
               except ValueError:
                   pass
               return False
+              
           with open('config.template.json', 'r') as f:
               content = f.read()
               
@@ -159,7 +161,7 @@ jobs:
           
           rm -f /tmp/transit_run.json
           
-          if [ "${STATUS:-0}" -ne 124 ] &&[ "${STATUS:-0}" -ne 0 ]; then
+          if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
             echo "transit tested error: sing-box crashed during startup!"
             exit 1
           fi
