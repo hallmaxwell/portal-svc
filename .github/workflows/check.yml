@@ -75,6 +75,10 @@ jobs:
                   inbound['auto_route'] = False
                   inbound['strict_route'] = False
                   
+          if 'route' in data and 'rule_set' in data['route']:
+              for rs in data['route']['rule_set']:
+                  rs['download_detour'] = 'direct'
+                  
           with open('/tmp/dock_run.json', 'w') as f:
               json.dump(data, f, indent=2)
           "
@@ -90,7 +94,7 @@ jobs:
           
           rm -f /tmp/dock_run.json
           
-          if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
+          if [ "${STATUS:-0}" -ne 124 ] &&[ "${STATUS:-0}" -ne 0 ]; then
             echo "dock tested error: sing-box crashed during startup!"
             exit 1
           fi
@@ -111,7 +115,7 @@ jobs:
           def is_raw_json(val):
               val = val.strip()
               if val.isdigit(): return True
-              if val.lower() in['true', 'false']: return True
+              if val.lower() in ['true', 'false']: return True
               if val.startswith('[') and val.endswith(']'): return True
               if val.startswith('{') and val.endswith('}'): return True
               try:
@@ -146,6 +150,11 @@ jobs:
                   inbound['auto_route'] = False
                   inbound['strict_route'] = False
                   
+          # 同样为 transit 节点增加 CI 环境防断网下载处理
+          if 'route' in data and 'rule_set' in data['route']:
+              for rs in data['route']['rule_set']:
+                  rs['download_detour'] = 'do-out'
+                  
           with open('/tmp/transit_run.json', 'w') as f:
               json.dump(data, f, indent=2)
           "
@@ -161,7 +170,7 @@ jobs:
           
           rm -f /tmp/transit_run.json
           
-          if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
+          if[ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
             echo "transit tested error: sing-box crashed during startup!"
             exit 1
           fi
