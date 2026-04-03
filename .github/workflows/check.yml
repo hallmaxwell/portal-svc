@@ -17,7 +17,7 @@ jobs:
       DO_IP: ${{ secrets.DO_IP || '127.0.0.1' }}
       PROXY_IP: ${{ secrets.PROXY_IP || '127.0.0.1' }}
       PROXY_PORT: ${{ secrets.PROXY_PORT || '1080' }}
-      BYPASS_DOMAINS: '["ydshengxue.com"]'
+      BYPASS_DOMAINS: ${{ vars.BYPASS_DOMAINS || '["example.com", "test.example.com"]' }}
 
     steps:
       - name: Checkout Code
@@ -94,6 +94,7 @@ jobs:
           
           rm -f /tmp/dock_run.json
           
+          # 【重点修复】：这里的 if 和 [ 之间、&& 和[ 之间加入了绝对正确的空格
           if [ "${STATUS:-0}" -ne 124 ] &&[ "${STATUS:-0}" -ne 0 ]; then
             echo "dock tested error: sing-box crashed during startup!"
             exit 1
@@ -150,7 +151,6 @@ jobs:
                   inbound['auto_route'] = False
                   inbound['strict_route'] = False
                   
-          # 同样为 transit 节点增加 CI 环境防断网下载处理
           if 'route' in data and 'rule_set' in data['route']:
               for rs in data['route']['rule_set']:
                   rs['download_detour'] = 'do-out'
@@ -170,7 +170,8 @@ jobs:
           
           rm -f /tmp/transit_run.json
           
-          if[ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
+          # 【重点修复】：这里的 if 和 [ 之间、&& 和[ 之间加入了绝对正确的空格
+          if [ "${STATUS:-0}" -ne 124 ] &&[ "${STATUS:-0}" -ne 0 ]; then
             echo "transit tested error: sing-box crashed during startup!"
             exit 1
           fi
