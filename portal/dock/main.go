@@ -8,6 +8,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
 )
 
 func isRawJSONValue(val string) bool {
@@ -74,6 +75,7 @@ func main() {
 	os.WriteFile(outPath, []byte(content), 0644)
 	cmd := exec.Command("sing-box", "run", "-c", outPath)
 	cmd.Dir = baseDir
+	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
 
