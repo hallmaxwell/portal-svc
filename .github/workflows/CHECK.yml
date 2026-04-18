@@ -83,3 +83,9 @@ jobs:
           rm -f /tmp/transit_run.json
           
           if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
+            exit 1
+          fi
+          
+          if grep -qE "FATAL|ERROR" transit.log; then
+            exit 1
+          fi
