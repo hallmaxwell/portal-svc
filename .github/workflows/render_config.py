@@ -51,7 +51,8 @@ for inbound in data.get('inbounds', []):
         
 if 'route' in data and 'rule_set' in data['route']:
     for rs in data['route']['rule_set']:
-        rs['download_detour'] = 'direct'
-        
+        if 'download_detour' in rs:
+            del rs['download_detour']
+
 with open(output_path, 'w') as f:
     json.dump(data, f, indent=2)
