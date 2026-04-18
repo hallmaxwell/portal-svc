@@ -8,6 +8,7 @@ on:
 
 jobs:
   test_configs:
+    name: Test Configurations
     runs-on: ubuntu-latest
     env:
       PRIVATE_KEY: ${{ secrets.PRIVATE_KEY || 'AAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAAA' }}
