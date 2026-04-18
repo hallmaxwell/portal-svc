@@ -48,7 +48,7 @@ jobs:
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          LATEST_VERSION=$(gh release view --repo SagerNet/sing-box --json tagName -jq .tagName | sed 's/v//')
+          LATEST_VERSION=$(gh release view --repo SagerNet/sing-box --json tagName --jq .tagName | sed 's/v//')
           curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${LATEST_VERSION}/sing-box-${LATEST_VERSION}-linux-amd64.tar.gz" | tar -xz
           sudo cp sing-box-${LATEST_VERSION}-linux-amd64/sing-box /usr/local/bin/
 
