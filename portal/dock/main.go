@@ -2,12 +2,16 @@ package main
 
 import (
 	"bufio"
-	"fmt"
+	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strconv"
 	"strings"
+	"syscall"
+	"time"
+
+	"github.com/kardianos/service"
 )
 
 func isRawJSONValue(val string) bool {
@@ -26,28 +30,44 @@ func isRawJSONValue(val string) bool {
 	if strings.HasPrefix(val, "{") && strings.HasSuffix(val, "}") {
 		return true
 	}
-	
 	return false
 }
 
-func main() {
-	baseDir, err := os.Getwd()
+type program struct {
+	cmd      *exec.Cmd
+	outPath  string
+	exit     chan struct{}
+	stopping bool
+}
+
+func (p *program) Start(s service.Service) error {
+	p.exit = make(chan struct{})
+	go p.run()
+	go p.monitorNetwork()
+	return nil
+}
+
+func (p *program) run() {
+	exe, err := os.Executable()
 	if err != nil {
-		baseDir = "."
+		os.Exit(1)
 	}
+	baseDir := filepath.Dir(exe)
 
 	envPath := filepath.Join(baseDir, ".env")
 	templatePath := filepath.Join(baseDir, "config.template.json")
-	outPath := filepath.Join(os.TempDir(), "dock.config.run.json")
+	p.outPath = filepath.Join(os.TempDir(), "dock.config.run.json")
 
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		fmt.Printf("Can't find .env file in %s\n", baseDir)
-		return
+		os.Exit(1)
 	}
 
 	envMap := make(map[string]string)
-	envFile, _ := os.Open(envPath)
-	defer envFile.Close()
+	envFile, err := os.Open(envPath)
+	if err != nil {
+		os.Exit(1)
+	}
+
 	scanner := bufio.NewScanner(envFile)
 	for scanner.Scan() {
 		line := strings.TrimSpace(scanner.Text())
@@ -59,8 +79,13 @@ func main() {
 			envMap[strings.TrimSpace(parts[0])] = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
 		}
 	}
+	envFile.Close()
 
-	tempData, _ := os.ReadFile(templatePath)
+	tempData, err := os.ReadFile(templatePath)
+	if err != nil {
+		os.Exit(1)
+	}
+
 	content := string(tempData)
 	for key, val := range envMap {
 		if isRawJSONValue(val) {
@@ -71,17 +96,88 @@ func main() {
 		}
 	}
 
-	os.WriteFile(outPath, []byte(content), 0644)
-	cmd := exec.Command("sing-box", "run", "-c", outPath)
-	cmd.Dir = baseDir
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	os.WriteFile(p.outPath,[]byte(content), 0644)
 
-	fmt.Println("Starting sing-box with the generated configuration...")
-	if err := cmd.Run(); err != nil {
-		fmt.Println("Error running sing-box:", err)
+	p.cmd = exec.Command("sing-box", "run", "-c", p.outPath)
+	p.cmd.Dir = baseDir
+	p.cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	p.cmd.Start()
+	p.cmd.Wait()
+
+	p.cleanup()
+
+	if !p.stopping {
+		os.Exit(1)
+	}
+}
+
+func (p *program) cleanup() {
+	if p.cmd != nil && p.cmd.Process != nil {
+		_ = p.cmd.Process.Kill()
+	}
+	if p.outPath != "" {
+		_ = os.Remove(p.outPath)
+	}
+}
+
+func (p *program) monitorNetwork() {
+	failCount := 0
+	for {
+		select {
+		case <-p.exit:
+			return
+		case <-time.After(10 * time.Second):
+			conn, err := net.DialTimeout("tcp", "8.8.8.8:53", 3*time.Second)
+			if err != nil {
+				failCount++
+				if failCount >= 3 {
+					p.cleanup()
+					os.Exit(1)
+				}
+			} else {
+				failCount = 0
+				conn.Close()
+			}
+		}
+	}
+}
+
+func (p *program) Stop(s service.Service) error {
+	p.stopping = true
+	close(p.exit)
+	p.cleanup()
+	return nil
+}
+
+func main() {
+	svcConfig := &service.Config{
+		Name:        "SingBoxWrapper",
+		DisplayName: "Sing-Box Wrapper Service",
+		Description: "Sing-Box background service with auto-recovery",
+		Option: service.KeyValue{
+			"OnFailure":              "restart",
+			"OnFailureDelayDuration": "10s",
+			"OnFailureResetPeriod":   600,
+		},
 	}
 
-	os.Remove(outPath)
-	fmt.Println("sing-box has exited. Temporary configuration file removed.")
+	prg := &program{}
+	s, err := service.New(prg, svcConfig)
+	if err != nil {
+		os.Exit(1)
+	}
+
+	if len(os.Args) > 1 {
+		err = service.Control(s, os.Args[1])
+		if err != nil {
+			os.Exit(1)
+		}
+		return
+	}
+
+	err = s.Run()
+	if err != nil {
+		os.Exit(1)
+	}
 }
