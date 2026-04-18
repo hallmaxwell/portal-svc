@@ -82,4 +82,4 @@ jobs:
           cat transit.log
           rm -f /tmp/transit_run.json
           
-          if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; the
+          if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
