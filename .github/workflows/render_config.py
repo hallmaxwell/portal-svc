@@ -6,7 +6,7 @@ def is_raw_json(val):
     val = val.strip()
     if val.isdigit(): 
         return True
-    if val.lower() in ['true', 'false']: 
+    if val.lower() in['true', 'false']: 
         return True
     if val.startswith('[') and val.endswith(']'): 
         return True
@@ -44,15 +44,22 @@ try:
 except json.JSONDecodeError:
     sys.exit(1)
     
-for inbound in data.get('inbounds', []):
+for inbound in data.get('inbounds',[]):
     if inbound.get('type') == 'tun':
         inbound['auto_route'] = False
         inbound['strict_route'] = False
-        
+
+if 'outbounds' not in data:
+    data['outbounds'] =[]
+    
+data['outbounds'].append({
+    "type": "direct",
+    "tag": "ci-direct-out"
+})
+
 if 'route' in data and 'rule_set' in data['route']:
     for rs in data['route']['rule_set']:
-        if 'download_detour' in rs:
-            del rs['download_detour']
+        rs['download_detour'] = 'ci-direct-out'
 
 with open(output_path, 'w') as f:
     json.dump(data, f, indent=2)
