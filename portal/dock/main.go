@@ -9,6 +9,9 @@ import (
 	"strconv"
 	"strings"
 	"syscall"
+	"time"
+
+	"github.com/kardianos/service"
 )
 
 func isRawJSONValue(val string) bool {
@@ -93,12 +96,14 @@ func (p *program) run() {
 		}
 	}
 
-	os.WriteFile(outPath, []byte(content), 0644)
-	cmd := exec.Command("sing-box", "run", "-c", outPath)
-	cmd.Dir = baseDir
-	cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
-	cmd.Stdout = os.Stdout
-	cmd.Stderr = os.Stderr
+	os.WriteFile(p.outPath,[]byte(content), 0644)
+
+	p.cmd = exec.Command("sing-box", "run", "-c", p.outPath)
+	p.cmd.Dir = baseDir
+	p.cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
+
+	p.cmd.Start()
+	p.cmd.Wait()
 
 	p.cleanup()
 
