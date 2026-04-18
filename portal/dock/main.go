@@ -10,9 +10,23 @@ import (
 	"strings"
 	"syscall"
 	"time"
-
+	"log"
 	"github.com/kardianos/service"
 )
+
+func initLogger() *os.File {
+    exe, _ := os.Executable()
+    baseDir := filepath.Dir(exe)
+    logPath := filepath.Join(baseDir, "portal_service.log")
+    
+    f, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+    if err != nil {
+        return nil
+    }
+    log.SetOutput(f)
+    log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+    return f
+}
 
 func isRawJSONValue(val string) bool {
 	if _, err := strconv.Atoi(val); err == nil {
@@ -50,7 +64,7 @@ func (p *program) Start(s service.Service) error {
 func (p *program) run() {
 	exe, err := os.Executable()
 	if err != nil {
-		os.Exit(1)
+		log.Fatalf("Read template flie failed: %v", err)
 	}
 	baseDir := filepath.Dir(exe)
 
@@ -59,13 +73,13 @@ func (p *program) run() {
 	p.outPath = filepath.Join(os.TempDir(), "dock.config.run.json")
 
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		os.Exit(1)
+		log.Fatalf("Read template flie failed: %v", err)
 	}
 
 	envMap := make(map[string]string)
 	envFile, err := os.Open(envPath)
 	if err != nil {
-		os.Exit(1)
+		log.Fatalf("Read template flie failed: %v", err)
 	}
 
 	scanner := bufio.NewScanner(envFile)
@@ -83,7 +97,7 @@ func (p *program) run() {
 
 	tempData, err := os.ReadFile(templatePath)
 	if err != nil {
-		os.Exit(1)
+		log.Fatalf("Read template flie failed: %v", err)
 	}
 
 	content := string(tempData)
@@ -108,7 +122,7 @@ func (p *program) run() {
 	p.cleanup()
 
 	if !p.stopping {
-		os.Exit(1)
+		log.Fatalf("Read template flie failed: %v", err)
 	}
 }
 
@@ -133,7 +147,7 @@ func (p *program) monitorNetwork() {
 				failCount++
 				if failCount >= 3 {
 					p.cleanup()
-					os.Exit(1)
+					log.Fatalf("Read template flie failed: %v", err)
 				}
 			} else {
 				failCount = 0
@@ -151,6 +165,11 @@ func (p *program) Stop(s service.Service) error {
 }
 
 func main() {
+	logFile := initLogger()
+    if logFile != nil {
+        defer logFile.Close()
+	}
+	
 	svcConfig := &service.Config{
 		Name:        "SingBoxWrapper",
 		DisplayName: "Sing-Box Wrapper Service",
@@ -165,19 +184,19 @@ func main() {
 	prg := &program{}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
-		os.Exit(1)
+		log.Fatalf("Read template flie failed: %v", err)
 	}
 
 	if len(os.Args) > 1 {
 		err = service.Control(s, os.Args[1])
 		if err != nil {
-			os.Exit(1)
+			log.Fatalf("Read template flie failed: %v", err)
 		}
 		return
 	}
 
 	err = s.Run()
 	if err != nil {
-		os.Exit(1)
+		log.Fatalf("Read template flie failed: %v", err)
 	}
 }
