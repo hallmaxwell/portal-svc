@@ -89,3 +89,28 @@ jobs:
           if grep -qE "FATAL|ERROR" transit.log; then
             exit 1
           fi
+
+  build_binaries:
+    name: Build Multi-Versions
+    needs: test_configs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.23'
+
+      - name: Build Executables
+        run: |
+          cd portal/dock
+          GOOS=windows GOARCH=amd64 go build -o portal_debug.exe ./main.go
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o portal_release.exe ./main.go
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: portal-executables
+          path: portal/dock/*.exe
