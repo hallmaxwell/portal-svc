@@ -55,7 +55,7 @@ jobs:
       - name: Test Local Node (Dock)
         run: |
           cd portal/dock
-          python3 ../../render_config.py config.template.json /tmp/dock_run.json
+          python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py config.template.json /tmp/dock_run.json
           
           sing-box check -c /tmp/dock_run.json
           sudo timeout 5 sing-box run -c /tmp/dock_run.json > dock.log 2>&1 || STATUS=$?
@@ -63,7 +63,7 @@ jobs:
           cat dock.log
           rm -f /tmp/dock_run.json
           
-          if [ "${STATUS:-0}" -ne 124 ] &&[ "${STATUS:-0}" -ne 0 ]; then
+          if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
             exit 1
           fi
           
@@ -74,7 +74,7 @@ jobs:
       - name: Test Cloud Node (Transit)
         run: |
           cd portal/transit
-          python3 ../../render_config.py config.template.json /tmp/transit_run.json
+          python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py config.template.json /tmp/transit_run.json
           
           sing-box check -c /tmp/transit_run.json
           sudo timeout 5 sing-box run -c /tmp/transit_run.json > transit.log 2>&1 || STATUS=$?
@@ -82,4 +82,10 @@ jobs:
           cat transit.log
           rm -f /tmp/transit_run.json
           
-          if[ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; the
+          if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
+            exit 1
+          fi
+          
+          if grep -qE "FATAL|ERROR" transit.log; then
+            exit 1
+          fi
