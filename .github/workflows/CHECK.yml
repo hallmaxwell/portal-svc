@@ -28,6 +28,7 @@ jobs:
       - uses: actions/setup-go@v5
         with:
           go-version: '1.21'
+          cache: false
 
       - name: Check Go Scripts
         run: |
@@ -103,10 +104,13 @@ jobs:
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
+          cache: false
 
       - name: Build Executables
         run: |
           cd portal/dock
+          go mod init dock || true
+          go mod tidy || true
           GOOS=windows GOARCH=amd64 go build -o portal_debug.exe ./main.go
           GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o portal_release.exe ./main.go
 
