@@ -2,6 +2,7 @@ package main
 
 import (
 	"bufio"
+	"log"
 	"net"
 	"os"
 	"os/exec"
@@ -10,22 +11,22 @@ import (
 	"strings"
 	"syscall"
 	"time"
-	"log"
+
 	"github.com/kardianos/service"
 )
 
 func initLogger() *os.File {
-    exe, _ := os.Executable()
-    baseDir := filepath.Dir(exe)
-    logPath := filepath.Join(baseDir, "portal_service.log")
-    
-    f, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-    if err != nil {
-        return nil
-    }
-    log.SetOutput(f)
-    log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-    return f
+	exe, _ := os.Executable()
+	baseDir := filepath.Dir(exe)
+	logPath := filepath.Join(baseDir, "portal_service.log")
+
+	f, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
+	if err != nil {
+		return nil
+	}
+	log.SetOutput(f)
+	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+	return f
 }
 
 func isRawJSONValue(val string) bool {
@@ -64,7 +65,7 @@ func (p *program) Start(s service.Service) error {
 func (p *program) run() {
 	exe, err := os.Executable()
 	if err != nil {
-		log.Fatalf("Read template flie failed: %v", err)
+		log.Fatalf("Failed to get executable path: %v", err)
 	}
 	baseDir := filepath.Dir(exe)
 
@@ -73,13 +74,13 @@ func (p *program) run() {
 	p.outPath = filepath.Join(os.TempDir(), "dock.config.run.json")
 
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		log.Fatalf("Read template flie failed: %v", err)
+		log.Fatalf("Environment file (.env) not found")
 	}
 
 	envMap := make(map[string]string)
 	envFile, err := os.Open(envPath)
 	if err != nil {
-		log.Fatalf("Read template flie failed: %v", err)
+		log.Fatalf("Failed to open .env file: %v", err)
 	}
 
 	scanner := bufio.NewScanner(envFile)
@@ -97,7 +98,7 @@ func (p *program) run() {
 
 	tempData, err := os.ReadFile(templatePath)
 	if err != nil {
-		log.Fatalf("Read template flie failed: %v", err)
+		log.Fatalf("Failed to read config template: %v", err)
 	}
 
 	content := string(tempData)
@@ -110,7 +111,7 @@ func (p *program) run() {
 		}
 	}
 
-	os.WriteFile(p.outPath,[]byte(content), 0644)
+	os.WriteFile(p.outPath, []byte(content), 0644)
 
 	p.cmd = exec.Command("sing-box", "run", "-c", p.outPath)
 	p.cmd.Dir = baseDir
@@ -122,7 +123,7 @@ func (p *program) run() {
 	p.cleanup()
 
 	if !p.stopping {
-		log.Fatalf("Read template flie failed: %v", err)
+		log.Fatalf("Sing-box process exited unexpectedly")
 	}
 }
 
@@ -147,7 +148,7 @@ func (p *program) monitorNetwork() {
 				failCount++
 				if failCount >= 3 {
 					p.cleanup()
-					log.Fatalf("Read template flie failed: %v", err)
+					log.Fatalf("Network health check failed 3 times, triggering restart")
 				}
 			} else {
 				failCount = 0
@@ -166,16 +167,16 @@ func (p *program) Stop(s service.Service) error {
 
 func main() {
 	logFile := initLogger()
-    if logFile != nil {
-        defer logFile.Close()
+	if logFile != nil {
+		defer logFile.Close()
 	}
-	
+
 	svcConfig := &service.Config{
 		Name:        "SingBoxWrapper",
 		DisplayName: "Sing-Box Wrapper Service",
 		Description: "Sing-Box background service with auto-recovery",
 		Option: service.KeyValue{
-			"OnFailure":              "restart",
+			"OnFailure":               "restart",
 			"OnFailureDelayDuration": "10s",
 			"OnFailureResetPeriod":   600,
 		},
@@ -184,19 +185,19 @@ func main() {
 	prg := &program{}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
-		log.Fatalf("Read template flie failed: %v", err)
+		log.Fatalf("Failed to create service: %v", err)
 	}
 
 	if len(os.Args) > 1 {
 		err = service.Control(s, os.Args[1])
 		if err != nil {
-			log.Fatalf("Read template flie failed: %v", err)
+			log.Fatalf("Failed to execute service control (%s): %v", os.Args[1], err)
 		}
 		return
 	}
 
 	err = s.Run()
 	if err != nil {
-		log.Fatalf("Read template flie failed: %v", err)
+		log.Fatalf("Service runtime error: %v", err)
 	}
 }
