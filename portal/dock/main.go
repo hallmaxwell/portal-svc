@@ -2,31 +2,76 @@ package main
 
 import (
 	"bufio"
+	"flag"
+	"fmt"
 	"log"
 	"net"
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 
 	"github.com/kardianos/service"
+	"github.com/nxadm/tail"
 )
 
-func initLogger() *os.File {
-	exe, _ := os.Executable()
-	baseDir := filepath.Dir(exe)
-	logPath := filepath.Join(baseDir, "portal_service.log")
+var logFilePath = filepath.Join(os.TempDir(), "dock.portal.svc.log")
 
-	f, err := os.OpenFile(logPath, os.O_RDWR|os.O_CREATE|os.O_APPEND, 0666)
-	if err != nil {
-		return nil
+type boundedLogWriter struct {
+	filePath string
+	maxLines int
+	mu       sync.Mutex
+}
+
+func (w *boundedLogWriter) Write(p[]byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
+
+	var validLines[]string
+	data, err := os.ReadFile(w.filePath)
+	if err == nil {
+		lines := strings.Split(string(data), "\n")
+		for _, l := range lines {
+			if len(strings.TrimSpace(l)) > 0 {
+				validLines = append(validLines, l)
+			}
+		}
 	}
-	log.SetOutput(f)
+
+	newLines := strings.Split(strings.TrimSuffix(string(p), "\n"), "\n")
+	for _, l := range newLines {
+		if len(strings.TrimSpace(l)) > 0 {
+			validLines = append(validLines, l)
+		}
+	}
+
+	if len(validLines) > w.maxLines {
+		validLines = validLines[len(validLines)-w.maxLines:]
+	}
+
+	outData := strings.Join(validLines, "\n") + "\n"
+	_ = os.WriteFile(w.filePath,[]byte(outData), 0666)
+
+	return len(p), nil
+}
+
+func setupBackgroundLogger() {
+	writer := &boundedLogWriter{filePath: logFilePath, maxLines: 100}
+	log.SetOutput(writer)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
-	return f
+}
+
+func killExistingSingBox() {
+	if runtime.GOOS == "windows" {
+		_ = exec.Command("taskkill", "/F", "/T", "/IM", "sing-box.exe").Run()
+	} else {
+		_ = exec.Command("killall", "-9", "sing-box").Run()
+	}
 }
 
 func isRawJSONValue(val string) bool {
@@ -74,13 +119,13 @@ func (p *program) run() {
 	p.outPath = filepath.Join(os.TempDir(), "dock.config.run.json")
 
 	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		log.Fatalf("Environment file (.env) not found")
+		log.Fatalf("Environment file not found")
 	}
 
 	envMap := make(map[string]string)
 	envFile, err := os.Open(envPath)
 	if err != nil {
-		log.Fatalf("Failed to open .env file: %v", err)
+		log.Fatalf("Failed to open environment file: %v", err)
 	}
 
 	scanner := bufio.NewScanner(envFile)
@@ -111,7 +156,9 @@ func (p *program) run() {
 		}
 	}
 
-	os.WriteFile(p.outPath, []byte(content), 0644)
+	os.WriteFile(p.outPath,[]byte(content), 0644)
+
+	killExistingSingBox()
 
 	p.cmd = exec.Command("sing-box", "run", "-c", p.outPath)
 	p.cmd.Dir = baseDir
@@ -149,7 +196,7 @@ func (p *program) monitorNetwork() {
 				failCount++
 				if failCount >= 3 {
 					p.cleanup()
-					log.Fatalf("Network health check failed 3 times, triggering restart")
+					log.Fatalf("Network health check failed, triggering restart")
 				}
 			} else {
 				failCount = 0
@@ -166,18 +213,60 @@ func (p *program) Stop(s service.Service) error {
 	return nil
 }
 
-func main() {
-	logFile := initLogger()
-	if logFile != nil {
-		defer logFile.Close()
+func handleLogsCmd(args[]string) {
+	logsCmd := flag.NewFlagSet("logs", flag.ExitOnError)
+	nLines := logsCmd.Int("n", 100, "")
+	follow := logsCmd.Bool("f", false, "")
+
+	logsCmd.Parse(args)
+
+	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
+		fmt.Printf("Log file does not exist: %s\n", logFilePath)
+		return
 	}
 
+	if *follow {
+		t, err := tail.TailFile(logFilePath, tail.Config{
+			Follow:    true,
+			ReOpen:    true,
+			MustExist: false,
+			Logger:    tail.DiscardingLogger,
+		})
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to tail log file: %v\n", err)
+			os.Exit(1)
+		}
+		for line := range t.Lines {
+			fmt.Println(line.Text)
+		}
+	} else {
+		data, err := os.ReadFile(logFilePath)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to read log file: %v\n", err)
+			os.Exit(1)
+		}
+
+		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+		start := 0
+		if len(lines) > *nLines {
+			start = len(lines) - *nLines
+		}
+
+		for i := start; i < len(lines); i++ {
+			if len(strings.TrimSpace(lines[i])) > 0 {
+				fmt.Println(lines[i])
+			}
+		}
+	}
+}
+
+func main() {
 	svcConfig := &service.Config{
 		Name:        "SingBoxWrapper",
 		DisplayName: "Sing-Box Wrapper Service",
 		Description: "Sing-Box background service with auto-recovery",
 		Option: service.KeyValue{
-			"OnFailure":               "restart",
+			"OnFailure":              "restart",
 			"OnFailureDelayDuration": "10s",
 			"OnFailureResetPeriod":   600,
 		},
@@ -186,16 +275,28 @@ func main() {
 	prg := &program{}
 	s, err := service.New(prg, svcConfig)
 	if err != nil {
-		log.Fatalf("Failed to create service: %v", err)
+		fmt.Fprintf(os.Stderr, "Failed to create service: %v\n", err)
+		os.Exit(1)
 	}
 
 	if len(os.Args) > 1 {
-		err = service.Control(s, os.Args[1])
-		if err != nil {
-			log.Fatalf("Failed to execute service control (%s): %v", os.Args[1], err)
+		cmd := os.Args[1]
+
+		if cmd == "logs" {
+			handleLogsCmd(os.Args[2:])
+			return
 		}
+
+		err = service.Control(s, cmd)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to execute service command '%s': %v\n", cmd, err)
+			os.Exit(1)
+		}
+		fmt.Printf("Service command '%s' executed successfully.\n", cmd)
 		return
 	}
+
+	setupBackgroundLogger()
 
 	err = s.Run()
 	if err != nil {
