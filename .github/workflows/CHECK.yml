@@ -27,25 +27,26 @@ jobs:
 
       - uses: actions/setup-go@v5
         with:
-          go-version: '1.21'
-          cache: false
+          go-version: '1.23'
+          cache: true
+          cache-dependency-path: |
+            portal/dock/go.sum
+            portal/transit/go.sum
 
       - name: Check Go Scripts
         run: |
           export GOOS=windows
           
           cd portal/dock
-          go mod init dock || true
-          go mod tidy || true
+          go mod download
           go vet main.go
           go build -o /dev/null main.go
           
           cd ../transit
-          go mod init transit || true
-          go mod tidy || true
+          go mod download
           go vet main.go
           go build -o /dev/null main.go
-
+      
       - name: Install sing-box
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
@@ -109,8 +110,7 @@ jobs:
       - name: Build Executables
         run: |
           cd portal/dock
-          go mod init dock || true
-          go mod tidy || true
+          go mod download
           GOOS=windows GOARCH=amd64 go build -o portal_debug.exe ./main.go
           GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o portal_release.exe ./main.go
 
