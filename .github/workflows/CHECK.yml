@@ -100,22 +100,43 @@ jobs:
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
 
       - name: Setup Go
         uses: actions/setup-go@v5
         with:
           go-version: '1.23'
-          cache: false
+          cache: true
+          cache-dependency-path: portal/dock/go.sum
 
-      - name: Build Executables
+      - name: Build and Package
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
+          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0-dev")
+          PKG_NAME="portal-${VERSION}-windows-amd64"
+          
           cd portal/dock
           go mod download
-          GOOS=windows GOARCH=amd64 go build -o portal_debug.exe ./main.go
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w -H=windowsgui" -o portal_release.exe ./main.go
-
+          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o portal_svc.exe ./main.go
+          
+          mkdir -p package/$PKG_NAME/core
+          mv portal_svc.exe package/$PKG_NAME/
+          
+          cp ../../LICENSE package/$PKG_NAME/ 2>/dev/null || true
+          cp config.template.json package/$PKG_NAME/core/ 2>/dev/null || true
+          
+          SB_VERSION=$(gh release view --repo SagerNet/sing-box --json tagName --jq .tagName | sed 's/v//')
+          curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SB_VERSION}/sing-box-${SB_VERSION}-windows-amd64.zip" -o singbox.zip
+          unzip singbox.zip
+          mv sing-box-${SB_VERSION}-windows-amd64/sing-box.exe package/$PKG_NAME/core/
+          
+          cd package
+          zip -r ${PKG_NAME}.zip $PKG_NAME/
+          
       - name: Upload Artifacts
         uses: actions/upload-artifact@v4
         with:
-          name: portal-executables
-          path: portal/dock/*.exe
+          name: portal-windows-release
+          path: portal/dock/package/*.zip
