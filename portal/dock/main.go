@@ -172,7 +172,6 @@ func (p *program) run() {
 
 	p.cmd = exec.Command(singBoxPath, "run", "-c", p.outPath)
 	p.cmd.Dir = baseDir
-	p.cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	p.cmd.Stdout = log.Writer()
 	p.cmd.Stderr = log.Writer()
 	p.cmd.Start()
