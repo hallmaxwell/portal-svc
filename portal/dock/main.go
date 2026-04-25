@@ -114,6 +114,16 @@ func (p *program) run() {
 	}
 	baseDir := filepath.Dir(exe)
 
+	singBoxBin := "sing-box"
+	if runtime.GOOS == "windows" {
+		singBoxBin = "sing-box.exe"
+	}
+	singBoxPath := filepath.Join(baseDir, "core", singBoxBin)
+
+	if _, err := os.Stat(singBoxPath); os.IsNotExist(err) {
+		log.Fatalf("Dependencies not found: %s", singBoxPath)
+	}
+
 	envPath := filepath.Join(baseDir, ".env")
 	templatePath := filepath.Join(baseDir, "config.template.json")
 	p.outPath = filepath.Join(os.TempDir(), "dock.config.run.json")
@@ -160,7 +170,7 @@ func (p *program) run() {
 
 	killExistingSingBox()
 
-	p.cmd = exec.Command("sing-box", "run", "-c", p.outPath)
+	p.cmd = exec.Command(singBoxPath, "run", "-c", p.outPath)
 	p.cmd.Dir = baseDir
 	p.cmd.SysProcAttr = &syscall.SysProcAttr{HideWindow: true}
 	p.cmd.Stdout = log.Writer()
