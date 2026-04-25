@@ -96,12 +96,31 @@ jobs:
   build_binaries:
     name: Build Multi-Versions
     needs: test_configs
+    if: github.event_name == 'push' && (github.ref == 'refs/heads/main' || github.ref == 'refs/heads/master')
     runs-on: ubuntu-latest
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
         with:
           fetch-depth: 0
+
+      - name: Create and Push Tag
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          MINUTE_FIRST=$(date +%M | cut -c1)
+          TAG="$(date +%-m.%-d.%-H).${MINUTE_FIRST}"
+          echo "Generated Tag: $TAG"
+          
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+          
+          if git rev-parse -q --verify "refs/tags/$TAG" >/dev/null; then
+            echo "Tag $TAG already exists, skipping tag creation."
+          else
+            git tag $TAG
+            git push origin $TAG
+          fi
 
       - name: Setup Go
         uses: actions/setup-go@v5
@@ -110,33 +129,59 @@ jobs:
           cache: true
           cache-dependency-path: portal/dock/go.sum
 
-      - name: Build and Package
+      - name: Build and Package Cross-Platform
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
-          VERSION=$(git describe --tags --abbrev=0 2>/dev/null || echo "v1.0.0-dev")
-          PKG_NAME="portal-${VERSION}-windows-amd64"
-          
-          cd portal/dock
-          go mod download
-          GOOS=windows GOARCH=amd64 go build -ldflags="-s -w" -o portal_svc.exe ./main.go
-          
-          mkdir -p package/$PKG_NAME/core
-          mv portal_svc.exe package/$PKG_NAME/
-          
-          cp ../../LICENSE package/$PKG_NAME/ 2>/dev/null || true
-          cp config.template.json package/$PKG_NAME/core/ 2>/dev/null || true
-          
           SB_VERSION=$(gh release view --repo SagerNet/sing-box --json tagName --jq .tagName | sed 's/v//')
-          curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SB_VERSION}/sing-box-${SB_VERSION}-windows-amd64.zip" -o singbox.zip
-          unzip singbox.zip
-          mv sing-box-${SB_VERSION}-windows-amd64/sing-box.exe package/$PKG_NAME/core/
+          echo "Latest sing-box version: $SB_VERSION"
           
-          cd package
-          zip -r ${PKG_NAME}.zip $PKG_NAME/
+          TARGETS=(
+            "windows/amd64"
+            "linux/amd64"
+            "darwin/amd64"
+            "darwin/arm64"
+          )
           
-      - name: Upload Artifacts
+          mkdir -p portal_out
+          
+          for TARGET in "${TARGETS[@]}"; do
+            IFS='/' read -r GOOS GOARCH <<< "$TARGET"
+            echo "==== Building for $GOOS-$GOARCH ===="
+            
+            DIR_NAME="portal-${GOOS}-${GOARCH}"
+            mkdir -p "portal_out/$DIR_NAME/core"
+            
+            BIN_NAME="portal"
+            if [ "$GOOS" = "windows" ]; then 
+              BIN_NAME="portal.exe"
+            fi
+            
+            cd portal/dock
+            go mod download
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w" -o "../../portal_out/$DIR_NAME/$BIN_NAME" ./main.go
+            cd ../../
+            
+            cp LICENSE "portal_out/$DIR_NAME/" 2>/dev/null || echo "LICENSE file not found!"
+            
+            if [ "$GOOS" = "windows" ]; then
+              curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SB_VERSION}/sing-box-${SB_VERSION}-${GOOS}-${GOARCH}.zip" -o sb.zip
+              unzip -q sb.zip
+              mv "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/sing-box.exe" "portal_out/$DIR_NAME/core/"
+              rm -rf sb.zip "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}"
+            else
+              curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SB_VERSION}/sing-box-${SB_VERSION}-${GOOS}-${GOARCH}.tar.gz" -o sb.tar.gz
+              tar -xzf sb.tar.gz
+              mv "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/sing-box" "portal_out/$DIR_NAME/core/"
+              rm -rf sb.tar.gz "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}"
+            fi
+          done
+          
+          cd portal_out
+          zip -r ../portal.zip *
+          
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: portal-windows-release
-          path: portal/dock/package/*.zip
+          name: portal-releases
+          path: portal.zip
