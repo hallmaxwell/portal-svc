@@ -26,36 +26,41 @@ type boundedLogWriter struct {
 	filePath string
 	maxLines int
 	mu       sync.Mutex
+	lines    []string
+	loaded   bool
 }
 
-func (w *boundedLogWriter) Write(p[]byte) (n int, err error) {
+func (w *boundedLogWriter) Write(p []byte) (n int, err error) {
 	w.mu.Lock()
 	defer w.mu.Unlock()
 
-	var validLines[]string
-	data, err := os.ReadFile(w.filePath)
-	if err == nil {
-		lines := strings.Split(string(data), "\n")
-		for _, l := range lines {
-			if len(strings.TrimSpace(l)) > 0 {
-				validLines = append(validLines, l)
+	if !w.loaded {
+		data, err := os.ReadFile(w.filePath)
+		if err == nil {
+			fileLines := strings.Split(string(data), "\n")
+			for _, l := range fileLines {
+				if len(strings.TrimSpace(l)) > 0 {
+					w.lines = append(w.lines, l)
+				}
 			}
 		}
+		w.loaded = true
 	}
 
 	newLines := strings.Split(strings.TrimSuffix(string(p), "\n"), "\n")
 	for _, l := range newLines {
 		if len(strings.TrimSpace(l)) > 0 {
-			validLines = append(validLines, l)
+			w.lines = append(w.lines, l)
 		}
 	}
 
-	if len(validLines) > w.maxLines {
-		validLines = validLines[len(validLines)-w.maxLines:]
+	if len(w.lines) > w.maxLines {
+		copy(w.lines, w.lines[len(w.lines)-w.maxLines:])
+		w.lines = w.lines[:w.maxLines]
 	}
 
-	outData := strings.Join(validLines, "\n") + "\n"
-	_ = os.WriteFile(w.filePath,[]byte(outData), 0666)
+	outData := strings.Join(w.lines, "\n") + "\n"
+	_ = os.WriteFile(w.filePath, []byte(outData), 0666)
 
 	return len(p), nil
 }
@@ -147,7 +152,7 @@ func (p *program) run() {
 		}
 	}
 
-	os.WriteFile(p.outPath,[]byte(content), 0644)
+	os.WriteFile(p.outPath, []byte(content), 0644)
 
 	killExistingSingBox()
 
@@ -203,7 +208,7 @@ func (p *program) Stop(s service.Service) error {
 	return nil
 }
 
-func handleLogsCmd(args[]string) {
+func handleLogsCmd(args []string) {
 	logsCmd := flag.NewFlagSet("logs", flag.ExitOnError)
 	nLines := logsCmd.Int("n", 100, "")
 	follow := logsCmd.Bool("f", false, "")
