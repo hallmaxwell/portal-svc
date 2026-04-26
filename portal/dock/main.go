@@ -19,49 +19,76 @@ import (
 	"github.com/nxadm/tail"
 )
 
-var logFilePath = filepath.Join(os.TempDir(), "dock.portal.svc.log")
+var outLogFilePath = filepath.Join(os.TempDir(), "dock.portal.out.log")
+var errLogFilePath = filepath.Join(os.TempDir(), "dock.portal.err.log")
 
 type boundedLogWriter struct {
 	filePath string
 	maxLines int
+	lines    []string
 	mu       sync.Mutex
 }
 
-func (w *boundedLogWriter) Write(p[]byte) (n int, err error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+func newBoundedLogWriter(filePath string, maxLines int) *boundedLogWriter {
+	w := &boundedLogWriter{
+		filePath: filePath,
+		maxLines: maxLines,
+		lines:    make([]string, 0, maxLines),
+	}
 
-	var validLines[]string
 	data, err := os.ReadFile(w.filePath)
 	if err == nil {
 		lines := strings.Split(string(data), "\n")
 		for _, l := range lines {
 			if len(strings.TrimSpace(l)) > 0 {
-				validLines = append(validLines, l)
+				w.lines = append(w.lines, l)
 			}
 		}
+		if len(w.lines) > w.maxLines {
+			w.lines = w.lines[len(w.lines)-w.maxLines:]
+		}
 	}
+
+	_ = w.flush()
+
+	return w
+}
+
+func (w *boundedLogWriter) flush() error {
+	outData := strings.Join(w.lines, "\n")
+	if len(w.lines) > 0 {
+		outData += "\n"
+	}
+	return os.WriteFile(w.filePath, []byte(outData), 0600)
+}
+
+func (w *boundedLogWriter) Write(p []byte) (n int, err error) {
+	w.mu.Lock()
+	defer w.mu.Unlock()
 
 	newLines := strings.Split(strings.TrimSuffix(string(p), "\n"), "\n")
 	for _, l := range newLines {
 		if len(strings.TrimSpace(l)) > 0 {
-			validLines = append(validLines, l)
+			w.lines = append(w.lines, l)
 		}
 	}
 
-	if len(validLines) > w.maxLines {
-		validLines = validLines[len(validLines)-w.maxLines:]
+	if len(w.lines) > w.maxLines {
+		w.lines = w.lines[len(w.lines)-w.maxLines:]
 	}
 
-	outData := strings.Join(validLines, "\n") + "\n"
-	_ = os.WriteFile(w.filePath,[]byte(outData), 0666)
+	_ = w.flush()
 
 	return len(p), nil
 }
 
+var outLog *boundedLogWriter
+var errLog *boundedLogWriter
+
 func setupBackgroundLogger() {
-	writer := &boundedLogWriter{filePath: logFilePath, maxLines: 100}
-	log.SetOutput(writer)
+	outLog = newBoundedLogWriter(outLogFilePath, 100)
+	errLog = newBoundedLogWriter(errLogFilePath, 100)
+	log.SetOutput(errLog)
 	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
 }
 
@@ -171,8 +198,8 @@ func (p *program) run() {
 
 	p.cmd = exec.Command(singBoxPath, "run", "-c", p.outPath)
 	p.cmd.Dir = baseDir
-	p.cmd.Stdout = log.Writer()
-	p.cmd.Stderr = log.Writer()
+	p.cmd.Stdout = outLog
+	p.cmd.Stderr = errLog
 	p.cmd.Start()
 	p.cmd.Wait()
 
@@ -225,16 +252,22 @@ func handleLogsCmd(args[]string) {
 	logsCmd := flag.NewFlagSet("logs", flag.ExitOnError)
 	nLines := logsCmd.Int("n", 100, "")
 	follow := logsCmd.Bool("f", false, "")
+	showErr := logsCmd.Bool("e", false, "")
 
 	logsCmd.Parse(args)
 
-	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
-		fmt.Printf("Log file does not exist: %s\n", logFilePath)
+	targetLogFile := outLogFilePath
+	if *showErr {
+		targetLogFile = errLogFilePath
+	}
+
+	if _, err := os.Stat(targetLogFile); os.IsNotExist(err) {
+		fmt.Printf("Log file does not exist: %s\n", targetLogFile)
 		return
 	}
 
 	if *follow {
-		t, err := tail.TailFile(logFilePath, tail.Config{
+		t, err := tail.TailFile(targetLogFile, tail.Config{
 			Follow:    true,
 			ReOpen:    true,
 			MustExist: false,
@@ -248,7 +281,7 @@ func handleLogsCmd(args[]string) {
 			fmt.Println(line.Text)
 		}
 	} else {
-		data, err := os.ReadFile(logFilePath)
+		data, err := os.ReadFile(targetLogFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to read log file: %v\n", err)
 			os.Exit(1)
