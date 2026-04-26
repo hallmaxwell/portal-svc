@@ -10,10 +10,11 @@ import (
 	"os/exec"
 	"path/filepath"
 	"runtime"
-	"strconv"
 	"strings"
 	"sync"
 	"time"
+
+	"hawego/portal/util"
 
 	"github.com/kardianos/service"
 	"github.com/nxadm/tail"
@@ -71,25 +72,6 @@ func killExistingSingBox() {
 	} else {
 		_ = exec.Command("killall", "-9", "sing-box").Run()
 	}
-}
-
-func isRawJSONValue(val string) bool {
-	if _, err := strconv.Atoi(val); err == nil {
-		return true
-	}
-	if _, err := strconv.ParseFloat(val, 64); err == nil {
-		return true
-	}
-	if val == "true" || val == "false" {
-		return true
-	}
-	if strings.HasPrefix(val, "[") && strings.HasSuffix(val, "]") {
-		return true
-	}
-	if strings.HasPrefix(val, "{") && strings.HasSuffix(val, "}") {
-		return true
-	}
-	return false
 }
 
 type program struct {
@@ -157,7 +139,7 @@ func (p *program) run() {
 
 	content := string(tempData)
 	for key, val := range envMap {
-		if isRawJSONValue(val) {
+		if util.IsRawJSONValue(val) {
 			content = strings.ReplaceAll(content, `"{`+key+`}"`, val)
 			content = strings.ReplaceAll(content, `{`+key+`}`, val)
 		} else {
