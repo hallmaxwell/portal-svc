@@ -4,35 +4,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
+
+	"hawego/portal/util"
 )
-
-func isRawJSONValue(val string) bool {
-
-	if _, err := strconv.Atoi(val); err == nil {
-		return true
-	}
-
-	if _, err := strconv.ParseFloat(val, 64); err == nil {
-		return true
-	}
-
-	if val == "true" || val == "false" {
-		return true
-	}
-
-	if strings.HasPrefix(val, "[") && strings.HasSuffix(val, "]") {
-		return true
-	}
-
-	if strings.HasPrefix(val, "{") && strings.HasSuffix(val, "}") {
-		return true
-	}
-
-	return false
-}
 
 func main() {
 	data, err := os.ReadFile("/config.template.json")
@@ -41,6 +17,8 @@ func main() {
 	}
 	content := string(data)
 
+
+	var replacements []string
 	for _, env := range os.Environ() {
 		pair := strings.SplitN(env, "=", 2)
 		if len(pair) != 2 {
@@ -49,15 +27,23 @@ func main() {
 
 		key, val := pair[0], strings.Trim(strings.TrimSpace(pair[1]), `"'`)
 
-		if isRawJSONValue(val) {
+		if !strings.Contains(content, "{"+key+"}") {
+			continue
+		}
 
+		if util.IsRawJSONValue(val) {
+			
 			content = strings.ReplaceAll(content, `"{`+key+`}"`, val)
 
 			content = strings.ReplaceAll(content, `{`+key+`}`, val)
 		} else {
-
-			content = strings.ReplaceAll(content, `{`+key+`}`, val)
+			replacements = append(replacements, `{`+key+`}`, val)
 		}
+	}
+
+	if len(replacements) > 0 {
+		replacer := strings.NewReplacer(replacements...)
+		content = replacer.Replace(content)
 	}
 
 	outPath := "/tmp/transit.config.run.json"
