@@ -48,7 +48,7 @@ func main() {
 	}
 
 	outPath := "/tmp/transit.config.run.json"
-	os.WriteFile(outPath,[]byte(content), 0644)
+	os.WriteFile(outPath, []byte(content), 0600)
 
 	cmd := exec.Command("sing-box", "run", "-c", outPath)
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
