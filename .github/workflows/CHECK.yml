@@ -111,6 +111,7 @@ jobs:
           MINUTE_FIRST=$(date +%M | cut -c1)
           TAG="$(date +%-m.%-d.%-H).${MINUTE_FIRST}"
           echo "Generated Tag: $TAG"
+          echo "TAG=$TAG" >> $GITHUB_ENV
           
           git config --global user.name "github-actions[bot]"
           git config --global user.email "github-actions[bot]@users.noreply.github.com"
@@ -144,12 +145,13 @@ jobs:
           )
           
           mkdir -p portal_out
+          mkdir -p releases
           
           for TARGET in "${TARGETS[@]}"; do
             IFS='/' read -r GOOS GOARCH <<< "$TARGET"
             echo "==== Building for $GOOS-$GOARCH ===="
             
-            DIR_NAME="portal-${GOOS}-${GOARCH}"
+            DIR_NAME="portal-${TAG}-${GOOS}-${GOARCH}"
             mkdir -p "portal_out/$DIR_NAME/core"
             
             BIN_NAME="portal"
@@ -168,20 +170,27 @@ jobs:
               curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SB_VERSION}/sing-box-${SB_VERSION}-${GOOS}-${GOARCH}.zip" -o sb.zip
               unzip -q sb.zip
               mv "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/sing-box.exe" "portal_out/$DIR_NAME/core/"
+              cp "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/LICENSE" "portal_out/$DIR_NAME/core/" 2>/dev/null || true
               rm -rf sb.zip "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}"
             else
               curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SB_VERSION}/sing-box-${SB_VERSION}-${GOOS}-${GOARCH}.tar.gz" -o sb.tar.gz
               tar -xzf sb.tar.gz
               mv "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/sing-box" "portal_out/$DIR_NAME/core/"
+              cp "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/LICENSE" "portal_out/$DIR_NAME/core/" 2>/dev/null || true
               rm -rf sb.tar.gz "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}"
             fi
+
+            cd portal_out
+            if [ "$GOOS" = "windows" ]; then
+              zip -r "../releases/${DIR_NAME}.zip" "$DIR_NAME"
+            else
+              tar -czf "../releases/${DIR_NAME}.tar.gz" "$DIR_NAME"
+            fi
+            cd ..
           done
-          
-          cd portal_out
-          zip -r ../portal.zip *
           
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
-          name: portal-releases
-          path: portal.zip
+          name: portal
+          path: releases/*
