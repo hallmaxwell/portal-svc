@@ -43,6 +43,7 @@ func main() {
 	content := string(data)
 
 
+	var replacements []string
 	for _, env := range os.Environ() {
 		pair := strings.SplitN(env, "=", 2)
 		if len(pair) != 2 {
@@ -52,16 +53,20 @@ func main() {
 
 		key, val := pair[0], strings.Trim(strings.TrimSpace(pair[1]), `"'`)
 
+		if !strings.Contains(content, "{"+key+"}") {
+			continue
+		}
 
 		if isRawJSONValue(val) {
-			
-			content = strings.ReplaceAll(content, `"{`+key+`}"`, val)
-		
-			content = strings.ReplaceAll(content, `{`+key+`}`, val)
+			replacements = append(replacements, `"{`+key+`}"`, val, `{`+key+`}`, val)
 		} else {
-
-			content = strings.ReplaceAll(content, `{`+key+`}`, val)
+			replacements = append(replacements, `{`+key+`}`, val)
 		}
+	}
+
+	if len(replacements) > 0 {
+		replacer := strings.NewReplacer(replacements...)
+		content = replacer.Replace(content)
 	}
 
 	outPath := "/tmp/transit.config.run.json"
