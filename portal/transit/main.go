@@ -4,36 +4,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
+
+	"hawego/portal/internal/template"
 )
-
-
-func isRawJSONValue(val string) bool {
-
-	if _, err := strconv.Atoi(val); err == nil {
-		return true
-	}
-
-	if _, err := strconv.ParseFloat(val, 64); err == nil {
-		return true
-	}
-
-	if val == "true" || val == "false" {
-		return true
-	}
-
-	if strings.HasPrefix(val, "[") && strings.HasSuffix(val, "]") {
-		return true
-	}
-
-	if strings.HasPrefix(val, "{") && strings.HasSuffix(val, "}") {
-		return true
-	}
-	
-	return false
-}
 
 func main() {
 	data, err := os.ReadFile("/config.template.json")
@@ -42,27 +17,17 @@ func main() {
 	}
 	content := string(data)
 
-
+	envMap := make(map[string]string)
 	for _, env := range os.Environ() {
 		pair := strings.SplitN(env, "=", 2)
 		if len(pair) != 2 {
 			continue
 		}
-		
-
 		key, val := pair[0], strings.Trim(strings.TrimSpace(pair[1]), `"'`)
-
-
-		if isRawJSONValue(val) {
-			
-			content = strings.ReplaceAll(content, `"{`+key+`}"`, val)
-		
-			content = strings.ReplaceAll(content, `{`+key+`}`, val)
-		} else {
-
-			content = strings.ReplaceAll(content, `{`+key+`}`, val)
-		}
+		envMap[key] = val
 	}
+
+	content = template.Substitute(content, envMap)
 
 	outPath := "/tmp/transit.config.run.json"
 	os.WriteFile(outPath,[]byte(content), 0644)
