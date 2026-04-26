@@ -54,7 +54,7 @@ func (w *boundedLogWriter) Write(p[]byte) (n int, err error) {
 	}
 
 	outData := strings.Join(validLines, "\n") + "\n"
-	_ = os.WriteFile(w.filePath,[]byte(outData), 0666)
+	_ = os.WriteFile(w.filePath, []byte(outData), 0600)
 
 	return len(p), nil
 }
@@ -165,7 +165,7 @@ func (p *program) run() {
 		}
 	}
 
-	os.WriteFile(p.outPath,[]byte(content), 0644)
+	os.WriteFile(p.outPath, []byte(content), 0600)
 
 	killExistingSingBox()
 
