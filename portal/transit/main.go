@@ -4,36 +4,11 @@ import (
 	"fmt"
 	"os"
 	"os/exec"
-	"strconv"
 	"strings"
 	"time"
+
+	"hawego/portal/util"
 )
-
-
-func isRawJSONValue(val string) bool {
-
-	if _, err := strconv.Atoi(val); err == nil {
-		return true
-	}
-
-	if _, err := strconv.ParseFloat(val, 64); err == nil {
-		return true
-	}
-
-	if val == "true" || val == "false" {
-		return true
-	}
-
-	if strings.HasPrefix(val, "[") && strings.HasSuffix(val, "]") {
-		return true
-	}
-
-	if strings.HasPrefix(val, "{") && strings.HasSuffix(val, "}") {
-		return true
-	}
-	
-	return false
-}
 
 func main() {
 	data, err := os.ReadFile("/config.template.json")
@@ -57,8 +32,11 @@ func main() {
 			continue
 		}
 
-		if isRawJSONValue(val) {
-			replacements = append(replacements, `"{`+key+`}"`, val, `{`+key+`}`, val)
+		if util.IsRawJSONValue(val) {
+			
+			content = strings.ReplaceAll(content, `"{`+key+`}"`, val)
+		
+			content = strings.ReplaceAll(content, `{`+key+`}`, val)
 		} else {
 			replacements = append(replacements, `{`+key+`}`, val)
 		}
