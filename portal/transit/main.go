@@ -24,7 +24,6 @@ func main() {
 		if len(pair) != 2 {
 			continue
 		}
-		
 
 		key, val := pair[0], strings.Trim(strings.TrimSpace(pair[1]), `"'`)
 
@@ -35,7 +34,7 @@ func main() {
 		if util.IsRawJSONValue(val) {
 			
 			content = strings.ReplaceAll(content, `"{`+key+`}"`, val)
-		
+
 			content = strings.ReplaceAll(content, `{`+key+`}`, val)
 		} else {
 			replacements = append(replacements, `{`+key+`}`, val)
@@ -54,17 +53,17 @@ func main() {
 	cmd.Stdout, cmd.Stderr = os.Stdout, os.Stderr
 
 	fmt.Println("Transit Node Launching...")
-	
+
 	if err := cmd.Start(); err != nil {
 		fmt.Println("Launch failed: ", err)
 		return
 	}
-	
+
 	go func() {
 		time.Sleep(2 * time.Second)
 		os.Remove(outPath)
 		fmt.Println("transit.config.run.json cleared, transit node is running.")
 	}()
-	
-	cmd.Wait() 
+
+	cmd.Wait()
 }
