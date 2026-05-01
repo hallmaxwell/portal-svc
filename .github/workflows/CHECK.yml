@@ -37,12 +37,12 @@ jobs:
         run: |
           export GOOS=windows
           
-          cd dock
+          cd ${{ github.workspace }}/dock
           go mod download
           go vet main.go
           go build -o /dev/null main.go
           
-          cd ../transit
+          cd ${{ github.workspace }}/transit
           go mod download
           go vet main.go
           go build -o /dev/null main.go
@@ -57,7 +57,7 @@ jobs:
 
       - name: Test Local Node (Dock)
         run: |
-          cd dock
+          cd ${{ github.workspace }}/dock
           python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py dock_config.tmpl.json /tmp/dock_run.json
           
           sing-box check -c /tmp/dock_run.json
@@ -76,7 +76,7 @@ jobs:
 
       - name: Test Cloud Node (Transit)
         run: |
-          cd transit
+          cd ${{ github.workspace }}/transit
           python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py transit_config.tmpl.json /tmp/transit_run.json
           
           sing-box check -c /tmp/transit_run.json
@@ -152,41 +152,41 @@ jobs:
             echo "==== Building for $GOOS-$GOARCH ===="
             
             DIR_NAME="portal-${TAG}-${GOOS}-${GOARCH}"
-            mkdir -p "portal_out/$DIR_NAME/core"
+            mkdir -p "${{ github.workspace }}/portal_out/$DIR_NAME/core"
             
             BIN_NAME="portal-svc"
             if [ "$GOOS" = "windows" ]; then 
               BIN_NAME="portal-svc.exe"
             fi
             
-            cd dock
+            cd ${{ github.workspace }}/dock
             go mod download
-            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w" -o "../../portal_out/$DIR_NAME/$BIN_NAME" ./main.go
-            cd ../../
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w" -o "${{ github.workspace }}/portal_out/$DIR_NAME/$BIN_NAME" ./main.go
+            cd ${{ github.workspace }}
             
-            cp LICENSE "portal_out/$DIR_NAME/" 2>/dev/null || echo "LICENSE file not found!"
+            cp LICENSE "${{ github.workspace }}/portal_out/$DIR_NAME/" 2>/dev/null || echo "LICENSE file not found!"
             
             if [ "$GOOS" = "windows" ]; then
               curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SB_VERSION}/sing-box-${SB_VERSION}-${GOOS}-${GOARCH}.zip" -o sb.zip
               unzip -q sb.zip
-              mv "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/sing-box.exe" "portal_out/$DIR_NAME/core/"
-              cp "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/LICENSE" "portal_out/$DIR_NAME/core/" 2>/dev/null || true
+              mv "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/sing-box.exe" "${{ github.workspace }}/portal_out/$DIR_NAME/core/"
+              cp "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/LICENSE" "${{ github.workspace }}/portal_out/$DIR_NAME/core/" 2>/dev/null || true
               rm -rf sb.zip "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}"
             else
               curl -fsSL "https://github.com/SagerNet/sing-box/releases/download/v${SB_VERSION}/sing-box-${SB_VERSION}-${GOOS}-${GOARCH}.tar.gz" -o sb.tar.gz
               tar -xzf sb.tar.gz
-              mv "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/sing-box" "portal_out/$DIR_NAME/core/"
-              cp "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/LICENSE" "portal_out/$DIR_NAME/core/" 2>/dev/null || true
+              mv "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/sing-box" "${{ github.workspace }}/portal_out/$DIR_NAME/core/"
+              cp "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}/LICENSE" "${{ github.workspace }}/portal_out/$DIR_NAME/core/" 2>/dev/null || true
               rm -rf sb.tar.gz "sing-box-${SB_VERSION}-${GOOS}-${GOARCH}"
             fi
 
-            cd portal_out
+            cd ${{ github.workspace }}/portal_out
             if [ "$GOOS" = "windows" ]; then
-              zip -r "../releases/${DIR_NAME}.zip" "$DIR_NAME"
+              zip -r "${{ github.workspace }}/releases/${DIR_NAME}.zip" "$DIR_NAME"
             else
-              tar -czf "../releases/${DIR_NAME}.tar.gz" "$DIR_NAME"
+              tar -czf "${{ github.workspace }}/releases/${DIR_NAME}.tar.gz" "$DIR_NAME"
             fi
-            cd ..
+            cd ${{ github.workspace }}
           done
           
       - name: Upload Artifact
