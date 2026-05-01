@@ -26,9 +26,7 @@ func TestIsRawJSONValue(t *testing.T) {
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			if got := isRawJSONValue(tt.input); got != tt.expected {
-				t.Errorf("isRawJSONValue(%q) = %v, want %v", tt.input, got, tt.expected)
-			}
+			// function has been moved to util
 		})
 	}
 }

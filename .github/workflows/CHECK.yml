@@ -58,7 +58,7 @@ jobs:
       - name: Test Local Node (Dock)
         run: |
           cd portal/dock
-          python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py config.template.json /tmp/dock_run.json
+          python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py dock_config.tmpl.json /tmp/dock_run.json
           
           sing-box check -c /tmp/dock_run.json
           sudo timeout 5 sing-box run -c /tmp/dock_run.json > dock.log 2>&1 || STATUS=$?
@@ -77,7 +77,7 @@ jobs:
       - name: Test Cloud Node (Transit)
         run: |
           cd portal/transit
-          python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py config.template.json /tmp/transit_run.json
+          python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py transit_config.tmpl.json /tmp/transit_run.json
           
           sing-box check -c /tmp/transit_run.json
           sudo timeout 5 sing-box run -c /tmp/transit_run.json > transit.log 2>&1 || STATUS=$?
@@ -154,9 +154,9 @@ jobs:
             DIR_NAME="portal-${TAG}-${GOOS}-${GOARCH}"
             mkdir -p "portal_out/$DIR_NAME/core"
             
-            BIN_NAME="portal"
+            BIN_NAME="portal-svc"
             if [ "$GOOS" = "windows" ]; then 
-              BIN_NAME="portal.exe"
+              BIN_NAME="portal-svc.exe"
             fi
             
             cd portal/dock
