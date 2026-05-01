@@ -31,7 +31,7 @@ jobs:
           cache: true
           cache-dependency-path: |
             dock/go.sum
-            portal/transit/go.sum
+            transit/go.sum
 
       - name: Check Go Scripts
         run: |
@@ -76,7 +76,7 @@ jobs:
 
       - name: Test Cloud Node (Transit)
         run: |
-          cd portal/transit
+          cd transit
           python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py transit_config.tmpl.json /tmp/transit_run.json
           
           sing-box check -c /tmp/transit_run.json
