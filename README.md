@@ -1,8 +1,17 @@
+<div align="center">
+
 # 📦 portal-svc
 
-**The Ultimate Portal Template for Sing-box**
+**The Ultimate High-Performance Portal for Sing-box**
 
-Hawego is a lightweight, efficient, and clean portal template for Sing-box, designed to provide a silky-smooth proxy experience. It consists of two main components running via a unified executable (`portal-svc`): **Transit** (Server) and **Dock** (Client).
+[![Build Status](https://img.shields.io/github/actions/workflow/status/hallmaxwell/portal-svc/docker-publish.yml?style=flat-square&logo=github)](https://github.com/hallmaxwell/portal-svc/actions)
+[![Latest Release](https://img.shields.io/github/v/release/hallmaxwell/portal-svc?style=flat-square)](https://github.com/hallmaxwell/portal-svc/releases/latest)
+[![License](https://img.shields.io/github/license/hallmaxwell/portal-svc?style=flat-square)](LICENSE)
+[![Go Version](https://img.shields.io/badge/Go-1.24.3-00ADD8?style=flat-square&logo=go)](go.mod)
+
+`portal-svc` is a lightweight, efficient, and clean portal template for Sing-box, designed to provide a silky-smooth proxy experience. It consolidates two main components—**Transit** (Server) and **Dock** (Client)—into a single unified executable.
+
+</div>
 
 ---
 
@@ -11,17 +20,17 @@ Hawego is a lightweight, efficient, and clean portal template for Sing-box, desi
 ```text
 .
 ├── cmd/
-│   └── svc/         # Unified service main entrypoint
+│   └── svc/                   # Unified service main entrypoint
 │       ├── main.go
 │       └── main_test.go
-├── transit/         # Server-side deployment files
+├── transit/                   # Server-side deployment files
 │   ├── Dockerfile
 │   └── docker-compose.yml
-├── util/            # Shared utilities
+├── util/                      # Shared utilities
 ├── dock_config.tmpl.json      # Sing-box client configuration template
 ├── transit_config.tmpl.json   # Sing-box server configuration template
 ├── Dockerfile                 # Unified Docker image definition
-└── README.md        # You are here
+└── README.md                  # You are here
 ```
 
 ---
@@ -32,16 +41,17 @@ The Transit node acts as a secure relay. It accepts incoming **VLESS + REALITY**
 
 ### 🐳 Deployment
 
-The Transit node is designed to be deployed using Docker.
+The Transit node is designed to be deployed using the official Docker image.
 
-1.  Navigate to the transit directory: `cd transit`
+1.  Navigate to the `transit` directory: `cd transit`
 2.  Create a `.env` file with the required parameters (see below).
 3.  Deploy using Docker Compose:
     ```bash
     docker-compose up -d
     ```
 
-### ⚙️ Runtime Parameters (.env)
+<details>
+<summary><strong>⚙️ Runtime Parameters (.env)</strong></summary>
 
 | Variable | Description |
 | :--- | :--- |
@@ -53,6 +63,8 @@ The Transit node is designed to be deployed using Docker.
 | `PROXY_USERNAME` | Upstream SOCKS5 Proxy Username |
 | `PROXY_PASSWORD` | Upstream SOCKS5 Proxy Password |
 
+</details>
+
 ---
 
 ## ⚓ Dock Node (Client)
@@ -61,7 +73,7 @@ The Dock node is a client-side wrapper for Sing-box. It sets up a **TUN interfac
 
 ### 🛠️ Deployment
 
-1.  Build the unified executable (for Windows, be sure to set `GOOS=windows` as it uses Windows-specific syscalls like `HideWindow`):
+1.  Build the unified executable (for Windows, be sure to set `GOOS=windows` to support specific syscalls like `HideWindow`):
     ```bash
     go build -o portal-svc ./cmd/svc/main.go
     ```
@@ -75,7 +87,8 @@ The Dock node is a client-side wrapper for Sing-box. It sets up a **TUN interfac
     *   **Uninstall**: `./portal-svc dock uninstall`
     *   **View Logs**: `./portal-svc dock logs [-f] [-n 100]`
 
-### ⚙️ Runtime Parameters (.env)
+<details>
+<summary><strong>⚙️ Runtime Parameters (.env)</strong></summary>
 
 | Variable | Description |
 | :--- | :--- |
@@ -85,14 +98,16 @@ The Dock node is a client-side wrapper for Sing-box. It sets up a **TUN interfac
 | `SHORT_ID` | REALITY Short ID |
 | `BYPASS_DOMAINS` | JSON array of domains to bypass (e.g., `["example.com", "google.cn"]`) |
 
+</details>
+
 ---
 
 ## 📖 Usage Workflow
 
-1.  **Setup Transit**: Deploy the Transit node on your server with your upstream SOCKS5 proxy details.
+1.  **Setup Transit**: Deploy the Transit node on your server using the `ghcr.io/hallmaxwell/portal-svc` Docker image.
 2.  **Generate Keys**: Generate a UUID and a X25519 key pair for VLESS+REALITY.
 3.  **Configure Dock**: Fill in the `.env` on your client machine with the Transit server's IP and the generated keys.
-4.  **Run Dock**: Install and start the Dock service to begin proxying your system traffic through the TUN interface.
+4.  **Run Dock**: Install and start the Dock service via `portal-svc` to begin proxying your system traffic through the TUN interface.
 
 ---
 
