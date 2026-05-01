@@ -413,7 +413,7 @@ func main() {
 
 	if cmd == "transit" {
 		transitCmd := flag.NewFlagSet("transit", flag.ExitOnError)
-		configPath := transitCmd.String("config", "/transit_config.tmpl.json", "Path to transit template config")
+		configPath := transitCmd.String("config", "transit_config.tmpl.json", "Path to transit template config")
 		transitCmd.Parse(os.Args[2:])
 
 		runTransit(*configPath)
