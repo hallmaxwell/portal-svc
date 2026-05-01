@@ -29,23 +29,16 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
-          cache-dependency-path: |
-            dock/go.sum
-            transit/go.sum
+          cache-dependency-path: go.sum
 
       - name: Check Go Scripts
         run: |
           export GOOS=windows
           
-          cd ${{ github.workspace }}/dock
+          cd ${{ github.workspace }}
           go mod download
-          go vet main.go
-          go build -o /dev/null main.go
-          
-          cd ${{ github.workspace }}/transit
-          go mod download
-          go vet main.go
-          go build -o /dev/null main.go
+          go vet ./...
+          go build -o /dev/null ./cmd/svc/...
       
       - name: Install sing-box
         env:
@@ -57,8 +50,8 @@ jobs:
 
       - name: Test Local Node (Dock)
         run: |
-          cd ${{ github.workspace }}/dock
-          python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py dock_config.tmpl.json /tmp/dock_run.json
+          cd ${{ github.workspace }}
+          python3 .github/workflows/render_config.py dock_config.tmpl.json /tmp/dock_run.json
           
           sing-box check -c /tmp/dock_run.json
           sudo timeout 5 sing-box run -c /tmp/dock_run.json > dock.log 2>&1 || STATUS=$?
@@ -76,8 +69,8 @@ jobs:
 
       - name: Test Cloud Node (Transit)
         run: |
-          cd ${{ github.workspace }}/transit
-          python3 $GITHUB_WORKSPACE/.github/workflows/render_config.py transit_config.tmpl.json /tmp/transit_run.json
+          cd ${{ github.workspace }}
+          python3 .github/workflows/render_config.py transit_config.tmpl.json /tmp/transit_run.json
           
           sing-box check -c /tmp/transit_run.json
           sudo timeout 5 sing-box run -c /tmp/transit_run.json > transit.log 2>&1 || STATUS=$?
@@ -128,7 +121,7 @@ jobs:
         with:
           go-version: '1.23'
           cache: true
-          cache-dependency-path: dock/go.sum
+          cache-dependency-path: go.sum
 
       - name: Build and Package Cross-Platform
         env:
@@ -159,10 +152,9 @@ jobs:
               BIN_NAME="portal-svc.exe"
             fi
             
-            cd ${{ github.workspace }}/dock
-            go mod download
-            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w" -o "${{ github.workspace }}/portal_out/$DIR_NAME/$BIN_NAME" ./main.go
             cd ${{ github.workspace }}
+            go mod download
+            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w" -o "${{ github.workspace }}/portal_out/$DIR_NAME/$BIN_NAME" ./cmd/svc/main.go
             
             cp LICENSE "${{ github.workspace }}/portal_out/$DIR_NAME/" 2>/dev/null || echo "LICENSE file not found!"
             
