@@ -1,10 +1,12 @@
 services:
   sing-box:
-    build: .
+    build:
+      context: ..
+      dockerfile: transit/Dockerfile
     container_name: sing-box
     restart: always
     network_mode: host
     env_file: .env
     volumes:
-      - ./config.template.json:/config.template.json
+      - ../transit_config.tmpl.json:/transit_config.tmpl.json
       - /etc/localtime:/etc/localtime:ro
