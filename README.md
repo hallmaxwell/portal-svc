@@ -2,7 +2,7 @@
 
 **The Ultimate Portal Template for Sing-box**
 
-Hawego is a lightweight, efficient, and clean portal template for Sing-box, designed to provide a silky-smooth proxy experience. It consists of two main components: **Transit** (Server) and **Dock** (Client).
+Hawego is a lightweight, efficient, and clean portal template for Sing-box, designed to provide a silky-smooth proxy experience. It consists of two main components running via a unified executable (`portal-svc`): **Transit** (Server) and **Dock** (Client).
 
 ---
 
@@ -10,15 +10,17 @@ Hawego is a lightweight, efficient, and clean portal template for Sing-box, desi
 
 ```text
 .
-├── portal/
-│   ├── dock/        # Client-side component
-│   │   ├── main.go               # Service wrapper logic
-│   │   └── config.template.json  # Sing-box client configuration template
-│   └── transit/     # Server-side component
-│       ├── main.go               # Configuration loader
-│       ├── config.template.json  # Sing-box server configuration template
-│       ├── Dockerfile            # Docker image definition
-│       └── docker-compose.yml    # Docker Compose orchestration
+├── cmd/
+│   └── svc/         # Unified service main entrypoint
+│       ├── main.go
+│       └── main_test.go
+├── transit/         # Server-side deployment files
+│   ├── Dockerfile
+│   └── docker-compose.yml
+├── util/            # Shared utilities
+├── dock_config.tmpl.json      # Sing-box client configuration template
+├── transit_config.tmpl.json   # Sing-box server configuration template
+├── Dockerfile                 # Unified Docker image definition
 └── README.md        # You are here
 ```
 
@@ -32,7 +34,7 @@ The Transit node acts as a secure relay. It accepts incoming **VLESS + REALITY**
 
 The Transit node is designed to be deployed using Docker.
 
-1.  Navigate to the transit directory: `cd portal/transit`
+1.  Navigate to the transit directory: `cd transit`
 2.  Create a `.env` file with the required parameters (see below).
 3.  Deploy using Docker Compose:
     ```bash
@@ -55,23 +57,23 @@ The Transit node is designed to be deployed using Docker.
 
 ## ⚓ Dock Node (Client)
 
-The Dock node is a client-side wrapper for Sing-box. It sets up a **TUN interface** for transparent proxying and connects to the Transit node. It is designed to run as a background service.
+The Dock node is a client-side wrapper for Sing-box. It sets up a **TUN interface** for transparent proxying and connects to the Transit node. It is designed to run as a background service using the `dock` subcommand of the unified executable.
 
 ### 🛠️ Deployment
 
-1.  Navigate to the dock directory: `cd portal/dock`
-2.  Build the executable:
+1.  Build the unified executable (for Windows, be sure to set `GOOS=windows` as it uses Windows-specific syscalls like `HideWindow`):
     ```bash
-    go build -o dock main.go
+    go build -o portal-svc ./cmd/svc/main.go
     ```
-3.  Create a `.env` file in the same directory as the executable.
+2.  Create a `.env` file in the same directory as the executable.
+3.  Ensure the `sing-box` binary is available in a `core/` subdirectory or in your system path.
 4.  Manage the service (requires administrative/root privileges):
-    *   **Install**: `./dock install`
-    *   **Start**: `./dock start`
-    *   **Stop**: `./dock stop`
-    *   **Restart**: `./dock restart`
-    *   **Uninstall**: `./dock uninstall`
-    *   **View Logs**: `./dock logs [-f] [-n 100]`
+    *   **Install**: `./portal-svc dock install`
+    *   **Start**: `./portal-svc dock start`
+    *   **Stop**: `./portal-svc dock stop`
+    *   **Restart**: `./portal-svc dock restart`
+    *   **Uninstall**: `./portal-svc dock uninstall`
+    *   **View Logs**: `./portal-svc dock logs [-f] [-n 100]`
 
 ### ⚙️ Runtime Parameters (.env)
 
