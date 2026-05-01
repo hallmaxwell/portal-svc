@@ -20,55 +20,104 @@ import (
 	"github.com/nxadm/tail"
 )
 
-var logFilePath = filepath.Join(os.TempDir(), "dock.portal.svc.log")
+var (
+	infoLogFilePath  = filepath.Join(os.TempDir(), "portal_svc_info.log")
+	errorLogFilePath = filepath.Join(os.TempDir(), "portal_svc_error.log")
 
-type boundedLogWriter struct {
+	infoLogger  *boundedLogger
+	errorLogger *boundedLogger
+	logMu       sync.Mutex
+)
+
+type boundedLogger struct {
 	filePath string
 	maxLines int
-	mu       sync.Mutex
 	lines    []string
 	loaded   bool
 }
 
-func (w *boundedLogWriter) Write(p []byte) (n int, err error) {
-	w.mu.Lock()
-	defer w.mu.Unlock()
+func initLogFiles() {
+	_ = os.WriteFile(infoLogFilePath, []byte(""), 0666)
+	_ = os.WriteFile(errorLogFilePath, []byte(""), 0666)
 
-	if !w.loaded {
-		data, err := os.ReadFile(w.filePath)
+	infoLogger = &boundedLogger{filePath: infoLogFilePath, maxLines: 1000}
+	errorLogger = &boundedLogger{filePath: errorLogFilePath, maxLines: 1000}
+}
+
+func appendToLog(logger *boundedLogger, lines []string) {
+	logMu.Lock()
+	defer logMu.Unlock()
+
+	if logger == nil {
+		return
+	}
+
+	if !logger.loaded {
+		data, err := os.ReadFile(logger.filePath)
 		if err == nil {
 			fileLines := strings.Split(string(data), "\n")
 			for _, l := range fileLines {
 				if len(strings.TrimSpace(l)) > 0 {
-					w.lines = append(w.lines, l)
+					logger.lines = append(logger.lines, l)
 				}
 			}
 		}
-		w.loaded = true
+		logger.loaded = true
 	}
 
-	newLines := strings.Split(strings.TrimSuffix(string(p), "\n"), "\n")
-	for _, l := range newLines {
-		if len(strings.TrimSpace(l)) > 0 {
-			w.lines = append(w.lines, l)
-		}
+	logger.lines = append(logger.lines, lines...)
+
+	if len(logger.lines) > logger.maxLines {
+		logger.lines = logger.lines[len(logger.lines)-logger.maxLines:]
 	}
 
-	if len(w.lines) > w.maxLines {
-		copy(w.lines, w.lines[len(w.lines)-w.maxLines:])
-		w.lines = w.lines[:w.maxLines]
-	}
-
-	outData := strings.Join(w.lines, "\n") + "\n"
-	_ = os.WriteFile(w.filePath, []byte(outData), 0666)
-
-	return len(p), nil
+	outData := strings.Join(logger.lines, "\n") + "\n"
+	_ = os.WriteFile(logger.filePath, []byte(outData), 0666)
 }
 
-func setupBackgroundLogger() {
-	writer := &boundedLogWriter{filePath: logFilePath, maxLines: 100}
-	log.SetOutput(writer)
-	log.SetFlags(log.Ldate | log.Ltime | log.Lshortfile)
+func writeLog(level, prefix, msg string) {
+	if infoLogger == nil || errorLogger == nil {
+		return
+	}
+	timestamp := time.Now().Format("2006/01/02 15:04:05")
+	logLine := fmt.Sprintf("%s %s %s", timestamp, prefix, msg)
+
+	lines := []string{logLine}
+
+	appendToLog(infoLogger, lines)
+
+	if level == "error" {
+		appendToLog(errorLogger, lines)
+	}
+}
+
+func sysLogInfo(msg string) {
+	writeLog("info", "service:", msg)
+}
+
+func sysLogError(msg string) {
+	writeLog("error", "service:", msg)
+	os.Stderr.WriteString(msg + "\n")
+}
+
+type singBoxLogWriter struct {
+	isStderr bool
+}
+
+func (w *singBoxLogWriter) Write(p []byte) (n int, err error) {
+	lines := strings.Split(strings.TrimSuffix(string(p), "\n"), "\n")
+	for _, l := range lines {
+		if len(strings.TrimSpace(l)) > 0 {
+			level := "info"
+			lowerL := strings.ToLower(l)
+			if strings.Contains(lowerL, "error") || strings.Contains(lowerL, "fatal") || w.isStderr {
+				level = "error"
+				os.Stderr.WriteString("sing-box: " + l + "\n")
+			}
+			writeLog(level, "sing-box:", l)
+		}
+	}
+	return len(p), nil
 }
 
 func killExistingSingBox() {
@@ -94,9 +143,13 @@ func (p *program) Start(s service.Service) error {
 }
 
 func (p *program) run() {
+	initLogFiles()
+	sysLogInfo("Starting service run loop...")
+
 	exe, err := os.Executable()
 	if err != nil {
-		log.Fatalf("Failed to get executable path: %v", err)
+		sysLogError(fmt.Sprintf("Failed to get executable path: %v", err))
+		return
 	}
 	baseDir := filepath.Dir(exe)
 
@@ -106,22 +159,25 @@ func (p *program) run() {
 	}
 	singBoxPath := filepath.Join(baseDir, "core", singBoxBin)
 
-	if _, err := os.Stat(singBoxPath); os.IsNotExist(err) {
-		log.Fatalf("Dependencies not found: %s", singBoxPath)
+	if _, err := os.Stat(singBoxPath); err != nil {
+		sysLogError(fmt.Sprintf("Dependencies not found: %s", singBoxPath))
+		return
 	}
 
 	envPath := filepath.Join(baseDir, ".env")
-	templatePath := filepath.Join(baseDir, "config.template.json")
+	templatePath := filepath.Join(baseDir, "dock_config.tmpl.json")
 	p.outPath = filepath.Join(os.TempDir(), "dock.config.run.json")
 
-	if _, err := os.Stat(envPath); os.IsNotExist(err) {
-		log.Fatalf("Environment file not found")
+	if _, err := os.Stat(envPath); err != nil {
+		sysLogError("Environment file not found")
+		return
 	}
 
 	envMap := make(map[string]string)
 	envFile, err := os.Open(envPath)
 	if err != nil {
-		log.Fatalf("Failed to open environment file: %v", err)
+		sysLogError(fmt.Sprintf("Failed to open environment file: %v", err))
+		return
 	}
 
 	scanner := bufio.NewScanner(envFile)
@@ -139,7 +195,8 @@ func (p *program) run() {
 
 	tempData, err := os.ReadFile(templatePath)
 	if err != nil {
-		log.Fatalf("Failed to read config template: %v", err)
+		sysLogError(fmt.Sprintf("Failed to read config template: %v", err))
+		return
 	}
 
 	content := string(tempData)
@@ -158,15 +215,15 @@ func (p *program) run() {
 
 	p.cmd = exec.Command(singBoxPath, "run", "-c", p.outPath)
 	p.cmd.Dir = baseDir
-	p.cmd.Stdout = log.Writer()
-	p.cmd.Stderr = log.Writer()
+	p.cmd.Stdout = &singBoxLogWriter{isStderr: false}
+	p.cmd.Stderr = &singBoxLogWriter{isStderr: true}
 	p.cmd.Start()
 	p.cmd.Wait()
 
 	p.cleanup()
 
 	if !p.stopping {
-		log.Fatalf("Sing-box process exited unexpectedly")
+		sysLogError("Sing-box process exited unexpectedly")
 	}
 }
 
@@ -191,7 +248,8 @@ func (p *program) monitorNetwork() {
 				failCount++
 				if failCount >= 3 {
 					p.cleanup()
-					log.Fatalf("Network health check failed, triggering restart")
+					sysLogError("Network health check failed, triggering restart")
+					return
 				}
 			} else {
 				failCount = 0
@@ -215,13 +273,18 @@ func handleLogsCmd(args []string) {
 
 	logsCmd.Parse(args)
 
-	if _, err := os.Stat(logFilePath); os.IsNotExist(err) {
-		fmt.Printf("Log file does not exist: %s\n", logFilePath)
+	targetLogFile := infoLogFilePath
+	if logsCmd.NArg() > 0 && logsCmd.Arg(0) == "error" {
+		targetLogFile = errorLogFilePath
+	}
+
+	if _, err := os.Stat(targetLogFile); os.IsNotExist(err) {
+		fmt.Printf("Log file does not exist: %s\n", targetLogFile)
 		return
 	}
 
 	if *follow {
-		t, err := tail.TailFile(logFilePath, tail.Config{
+		t, err := tail.TailFile(targetLogFile, tail.Config{
 			Follow:    true,
 			ReOpen:    true,
 			MustExist: false,
@@ -235,7 +298,7 @@ func handleLogsCmd(args []string) {
 			fmt.Println(line.Text)
 		}
 	} else {
-		data, err := os.ReadFile(logFilePath)
+		data, err := os.ReadFile(targetLogFile)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to read log file: %v\n", err)
 			os.Exit(1)
@@ -282,16 +345,57 @@ func main() {
 			return
 		}
 
+		if cmd == "install" || cmd == "start" {
+			exe, _ := os.Executable()
+			baseDir := filepath.Dir(exe)
+
+			singBoxBin := "sing-box"
+			if runtime.GOOS == "windows" {
+				singBoxBin = "sing-box.exe"
+			}
+			singBoxPath := filepath.Join(baseDir, "core", singBoxBin)
+
+			if _, err := os.Stat(singBoxPath); err != nil {
+				fmt.Printf("Pre-flight check failed: Sing-box executable not found at %s\n", singBoxPath)
+				os.Exit(1)
+			}
+
+			envPath := filepath.Join(baseDir, ".env")
+			if _, err := os.Stat(envPath); err != nil {
+				fmt.Printf("Pre-flight check failed: Environment file not found at %s\n", envPath)
+				os.Exit(1)
+			}
+
+			templatePath := filepath.Join(baseDir, "dock_config.tmpl.json")
+			if _, err := os.Stat(templatePath); err != nil {
+				fmt.Printf("Pre-flight check failed: Template file not found at %s\n", templatePath)
+				os.Exit(1)
+			}
+		}
+
 		err = service.Control(s, cmd)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to execute service command '%s': %v\n", cmd, err)
 			os.Exit(1)
 		}
+
+		if cmd == "start" {
+			time.Sleep(2 * time.Second)
+			data, err := os.ReadFile(errorLogFilePath)
+			if err == nil && len(data) > 0 {
+				lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+				recentErrors := ""
+				for i := len(lines) - 1; i >= 0 && i >= len(lines)-5; i-- {
+					recentErrors = lines[i] + "\n" + recentErrors
+				}
+				fmt.Printf("Service command 'start' executed, but errors occurred shortly after:\n%s\n", recentErrors)
+				os.Exit(1)
+			}
+		}
+
 		fmt.Printf("Service command '%s' executed successfully.\n", cmd)
 		return
 	}
-
-	setupBackgroundLogger()
 
 	err = s.Run()
 	if err != nil {
