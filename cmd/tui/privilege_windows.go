@@ -41,42 +41,24 @@ func runElevated(args []string) error {
 		return err
 	}
 
-	verb := windows.StringToUTF16Ptr("runas")
-	file := windows.StringToUTF16Ptr(exe)
+	// Because windows.ShellExecuteEx is not available directly in x/sys/windows
+	// we will use powershell Start-Process -Wait as an alternative
+	// or fallback to ShellExecute which is asynchronous.
 
 	// Create arguments string
 	var argsStr string
 	for _, arg := range args {
 		argsStr += fmt.Sprintf(`"%s" `, arg)
 	}
-	argsPtr := windows.StringToUTF16Ptr(argsStr)
 
-	cwd, _ := os.Getwd()
-	cwdPtr := windows.StringToUTF16Ptr(cwd)
+	psCmd := fmt.Sprintf(`Start-Process -FilePath "%s" -ArgumentList '%s' -Verb RunAs -Wait`, exe, argsStr)
 
 	var execErr error
-
 	err = spinner.New().
 		Title("Requesting administrative privileges...").
 		Action(func() {
-			var sei windows.SHELLEXECUTEINFO
-			sei.CbSize = uint32(windows.SizeofSHELLEXECUTEINFO)
-			sei.FMask = windows.SEE_MASK_NOCLOSEPROCESS
-			sei.Hwnd = 0
-			sei.LpVerb = verb
-			sei.LpFile = file
-			sei.LpParameters = argsPtr
-			sei.LpDirectory = cwdPtr
-			sei.NShow = windows.SW_NORMAL
-
-			execErr = windows.ShellExecuteEx(&sei)
-			if execErr != nil {
-				return
-			}
-			if sei.HProcess != 0 {
-				windows.WaitForSingleObject(sei.HProcess, windows.INFINITE)
-				windows.CloseHandle(sei.HProcess)
-			}
+			cmd := exec.Command("powershell.exe", "-NoProfile", "-WindowStyle", "Hidden", "-Command", psCmd)
+			execErr = cmd.Run()
 		}).
 		Run()
 
