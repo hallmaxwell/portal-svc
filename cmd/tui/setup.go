@@ -10,15 +10,25 @@ import (
 	"github.com/charmbracelet/huh"
 )
 
-func runSetupWizard() {
-	// Read existing .env file if any
+type SetupData struct {
+	DO_IP          string
+	UUID           string
+	PUBLIC_KEY     string
+	SHORT_ID       string
+	BYPASS_DOMAINS string
+	Confirm        bool
+	EnvMap         map[string]string
+	EnvLines       []string
+	EnvPath        string
+}
+
+func GetSetupData() *SetupData {
 	envMap := make(map[string]string)
 	exe, _ := os.Executable()
 	baseDir := filepath.Dir(exe)
-	// For testing from tree root it might be better to just use current directory or handle gracefully
 	if strings.Contains(exe, "go-build") {
-	    cwd, _ := os.Getwd()
-	    baseDir = cwd
+		cwd, _ := os.Getwd()
+		baseDir = cwd
 	}
 	envPath := filepath.Join(baseDir, ".env")
 
@@ -41,7 +51,6 @@ func runSetupWizard() {
 		envFile.Close()
 	}
 
-	// Helper to get default
 	getDef := func(key, def string) string {
 		if val, ok := envMap[key]; ok && val != "" {
 			return val
@@ -49,66 +58,59 @@ func runSetupWizard() {
 		return def
 	}
 
-	var (
-		doIP          = getDef("DO_IP", "")
-		uuid          = getDef("UUID", "")
-		publicKey     = getDef("PUBLIC_KEY", "")
-		shortID       = getDef("SHORT_ID", "")
-		bypassDomains = getDef("BYPASS_DOMAINS", `["example.com", "google.cn"]`)
-		confirm       bool
-	)
+	return &SetupData{
+		DO_IP:          getDef("DO_IP", ""),
+		UUID:           getDef("UUID", ""),
+		PUBLIC_KEY:     getDef("PUBLIC_KEY", ""),
+		SHORT_ID:       getDef("SHORT_ID", ""),
+		BYPASS_DOMAINS: getDef("BYPASS_DOMAINS", `["example.com", "google.cn"]`),
+		EnvMap:         envMap,
+		EnvLines:       envLines,
+		EnvPath:        envPath,
+	}
+}
 
-	form := huh.NewForm(
+func BuildSetupForm(data *SetupData) *huh.Form {
+	return huh.NewForm(
 		huh.NewGroup(
 			huh.NewInput().
 				Title("Transit Node IP (DO_IP)").
-				Value(&doIP),
+				Value(&data.DO_IP),
 			huh.NewInput().
 				Title("VLESS User UUID (UUID)").
-				Value(&uuid),
+				Value(&data.UUID),
 			huh.NewInput().
 				Title("REALITY Public Key (PUBLIC_KEY)").
-				Value(&publicKey),
+				Value(&data.PUBLIC_KEY),
 			huh.NewInput().
 				Title("REALITY Short ID (SHORT_ID)").
-				Value(&shortID),
+				Value(&data.SHORT_ID),
 			huh.NewInput().
 				Title("Bypass Domains (BYPASS_DOMAINS)").
 				Description("JSON array format").
-				Value(&bypassDomains),
+				Value(&data.BYPASS_DOMAINS),
 		),
 		huh.NewGroup(
 			huh.NewConfirm().
 				Title("Save these parameters to .env?").
-				Value(&confirm),
+				Value(&data.Confirm),
 		),
 	)
+}
 
-	err := form.Run()
-	if err != nil {
-		fmt.Println("Setup canceled:", err)
-		return
-	}
-
-	if !confirm {
-		fmt.Println("Setup aborted by user.")
-		return
-	}
-
-	// Update map with new values
+func SaveSetup(data *SetupData) error {
 	newVals := map[string]string{
-		"DO_IP":          doIP,
-		"UUID":           uuid,
-		"PUBLIC_KEY":     publicKey,
-		"SHORT_ID":       shortID,
-		"BYPASS_DOMAINS": bypassDomains,
+		"DO_IP":          data.DO_IP,
+		"UUID":           data.UUID,
+		"PUBLIC_KEY":     data.PUBLIC_KEY,
+		"SHORT_ID":       data.SHORT_ID,
+		"BYPASS_DOMAINS": data.BYPASS_DOMAINS,
 	}
 
-	// Create new env file content by updating existing lines
 	var newEnvLines []string
 	updatedKeys := make(map[string]bool)
 
-	for _, line := range envLines {
+	for _, line := range data.EnvLines {
 		trimmedLine := strings.TrimSpace(line)
 		if trimmedLine == "" || strings.HasPrefix(trimmedLine, "#") {
 			newEnvLines = append(newEnvLines, line)
@@ -125,7 +127,6 @@ func runSetupWizard() {
 				}
 				updatedKeys[key] = true
 			} else {
-				// Keep other keys as is
 				newEnvLines = append(newEnvLines, line)
 			}
 		} else {
@@ -133,7 +134,6 @@ func runSetupWizard() {
 		}
 	}
 
-	// Append any keys that weren't in the original file
 	for key, val := range newVals {
 		if !updatedKeys[key] {
 			if key == "BYPASS_DOMAINS" {
@@ -145,9 +145,22 @@ func runSetupWizard() {
 	}
 
 	envContent := strings.Join(newEnvLines, "\n") + "\n"
+	return os.WriteFile(data.EnvPath, []byte(envContent), 0600)
+}
 
-	err = os.WriteFile(envPath, []byte(envContent), 0600)
-	if err != nil {
+func runSetupWizard() {
+    // Keep this for when called directly not from TUI loops
+	data := GetSetupData()
+	form := BuildSetupForm(data)
+	if err := form.Run(); err != nil {
+		fmt.Println("Setup canceled:", err)
+		return
+	}
+	if !data.Confirm {
+		fmt.Println("Setup aborted by user.")
+		return
+	}
+	if err := SaveSetup(data); err != nil {
 		fmt.Printf("Error saving .env file: %v\n", err)
 	} else {
 		fmt.Println("Successfully saved configuration to .env")
