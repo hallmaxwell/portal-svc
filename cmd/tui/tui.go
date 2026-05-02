@@ -49,48 +49,74 @@ func RunTUI() {
 		}
 	}()
 
-	for {
-		// Clear screen
-		fmt.Print("\033[H\033[2J")
-		banner()
+	// Clear screen once and print banner
+	fmt.Print("\033[H\033[2J")
+	banner()
 
-		var action string
+	for {
+		var inputString string
+		theme := huh.ThemeBase()
+
+		theme.Blurred.TextInput.Prompt = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#555555", Dark: "#AAAAAA"})
+		theme.Blurred.TextInput.Text = lipgloss.NewStyle().Foreground(lipgloss.AdaptiveColor{Light: "#222222", Dark: "#DDDDDD"})
+
+		theme.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
+		theme.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
+		theme.Focused.Base = theme.Focused.Base.Border(lipgloss.RoundedBorder()).BorderForeground(lipgloss.Color("#FF8C00")).Margin(1, 0, 1, 4)
+		theme.Blurred.Base = theme.Blurred.Base.Margin(1, 0, 1, 4)
+
 		form := huh.NewForm(
 			huh.NewGroup(
-				huh.NewSelect[string]().
-					Title("Main Menu").
-					Options(
-						huh.NewOption("🚀 Start Service", "start"),
-						huh.NewOption("⚙️ Setup / Configure Parameters", "setup"),
-						huh.NewOption("📦 Install as System Service", "install"),
-						huh.NewOption("🛑 Stop Service", "stop"),
-						huh.NewOption("🗑️ Uninstall Service", "uninstall"),
-						huh.NewOption("📝 View Logs", "logs"),
-						huh.NewOption("❌ Exit", "exit"),
-					).
-					Value(&action),
+				huh.NewInput().
+					Title("Command Palette").
+					Suggestions([]string{"install", "start", "stop", "uninstall", "logs", "setup", "exit"}).
+					Value(&inputString),
 			),
-		)
+		).WithTheme(theme)
 
 		err := form.Run()
 		if err != nil {
 			// Do not print error if it is simply user abort
 			if err.Error() != "user aborted" {
-				fmt.Println("Error:", err)
+				fmt.Println("[ ERROR ]", err)
 			}
 			break
+		}
+
+		fields := strings.Fields(inputString)
+		if len(fields) == 0 {
+			continue
+		}
+
+		action := fields[0]
+		var args []string
+		if len(fields) > 1 {
+			args = fields[1:]
 		}
 
 		if action == "exit" {
 			break
 		}
 
-		handleAction(action)
+		// Print disabled state manually because form.Run() clears itself usually,
+		// but since we want a disabled "IDE-like" log, let's just print a visual disabled input above.
+
+		disabledStyle := lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#555555")).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#555555")).
+			Margin(1, 0, 0, 4).
+			Padding(0, 1)
+
+		fmt.Println(disabledStyle.Render(fmt.Sprintf("Command Palette\n> %s", inputString)))
+		fmt.Println()
+
+		handleAction(action, args)
 	}
 }
 
 func banner() {
-	myFigure := figure.NewFigure("PORTAL", "", true)
+	myFigure := figure.NewFigure("PORTAL", "isometric1", true)
 	lines := strings.Split(myFigure.String(), "\n")
 
 	colors := []string{
@@ -109,25 +135,60 @@ func banner() {
 		}
 		color := colors[colorIdx%len(colors)]
 		style := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true)
-		fmt.Println(style.Render(line))
+		fmt.Println(lipgloss.NewStyle().MarginLeft(4).Render(style.Render(line)))
 		colorIdx++
 	}
 	fmt.Println()
 }
 
-func handleAction(action string) {
+func handleAction(action string, args []string) {
 	switch action {
 	case "setup":
 		runSetupWizard()
-	case "start", "stop", "install", "uninstall":
+	case "install":
 		executeWithElevation(action)
+		var confirmStart bool
+		_ = huh.NewConfirm().
+			Title("Install complete. Start service now?").
+			Value(&confirmStart).
+			Run()
+		if confirmStart {
+			executeWithElevation("start")
+			promptAfterStart(args)
+		}
+	case "start":
+		executeWithElevation(action)
+		promptAfterStart(args)
+	case "stop", "uninstall":
+		executeWithElevation(action)
+		fmt.Println("[ SUCCESS ] Program will now exit.")
+		os.Exit(0)
 	case "logs":
-		viewLogs()
+		viewLogs(args)
+		waitForEnter()
 	default:
-		fmt.Printf("Action %s not fully implemented yet.\n", action)
+		fmt.Printf("[ ERROR ] Action %s not fully implemented yet.\n", action)
+		waitForEnter()
 	}
+}
 
-	// Wait for user to confirm before continuing
+func promptAfterStart(args []string) {
+	var nextAction string
+	_ = huh.NewSelect[string]().
+		Title("Service started. View logs or return to menu?").
+		Options(
+			huh.NewOption("View logs", "logs"),
+			huh.NewOption("Return to menu", "menu"),
+		).
+		Value(&nextAction).
+		Run()
+	if nextAction == "logs" {
+		viewLogs(args)
+		waitForEnter()
+	}
+}
+
+func waitForEnter() {
 	var cont bool
 	_ = huh.NewConfirm().
 		Title("Press Enter to continue...").
@@ -137,14 +198,19 @@ func handleAction(action string) {
 		Run()
 }
 
-func viewLogs() {
+func viewLogs(args []string) {
 	exe, err := os.Executable()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("[ ERROR ] %v\n", err)
 		return
 	}
 
-	cmd := exec.Command(exe, "logs", "-f", "-n", "20")
+	defaultArgs := []string{"logs", "-f", "-n", "20"}
+	if len(args) > 0 {
+		defaultArgs = append([]string{"logs"}, args...)
+	}
+
+	cmd := exec.Command(exe, defaultArgs...)
 	cmd.Dir = filepath.Dir(exe)
 	cmd.Stdout = os.Stdout
 	cmd.Stderr = os.Stderr
@@ -152,7 +218,7 @@ func viewLogs() {
 	fmt.Println("--- Recent Logs ---")
 	err = cmd.Run()
 	if err != nil && err.Error() != "signal: interrupt" {
-		fmt.Printf("Failed to view logs: %v\n", err)
+		fmt.Printf("[ ERROR ] Failed to view logs: %v\n", err)
 	}
 	fmt.Println("-------------------")
 }

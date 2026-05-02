@@ -555,6 +555,6 @@ func main() {
 		return
 	}
 
-	fmt.Printf("Unknown command: %s\n", cmd)
-	os.Exit(1)
+	fmt.Printf("Unknown command: %s. Suggestion: maybe you meant 'dock %s'? Launching TUI...\n", cmd, cmd)
+	tui.RunTUI()
 }

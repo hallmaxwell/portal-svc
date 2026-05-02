@@ -17,7 +17,7 @@ func hasAdminPrivileges() bool {
 
 func executeWithElevation(action string) {
 	if !hasAdminPrivileges() {
-		fmt.Println("❌ Root privileges are required for this action.")
+		fmt.Println("[ ERROR ] Root privileges are required for this action.")
 		fmt.Println("Please run this tool using 'sudo' to perform this action.")
 		return
 	}
@@ -28,7 +28,7 @@ func executeWithElevation(action string) {
 func runServiceCommand(action string) {
 	exe, err := os.Executable()
 	if err != nil {
-		fmt.Printf("Error: %v\n", err)
+		fmt.Printf("[ ERROR ] %v\n", err)
 		return
 	}
 
@@ -39,6 +39,7 @@ func runServiceCommand(action string) {
 	var cmdOut []byte
 
 	err = spinner.New().
+		Type(spinner.Dots).
 		Title(fmt.Sprintf("Executing 'dock %s'...", action)).
 		Action(func() {
 			cmdOut, runErr = cmd.CombinedOutput()
@@ -46,17 +47,17 @@ func runServiceCommand(action string) {
 		Run()
 
 	if err != nil {
-		fmt.Printf("Failed to render spinner: %v\n", err)
+		fmt.Printf("[ ERROR ] Failed to render spinner: %v\n", err)
 		return
 	}
 
 	if runErr != nil {
-		fmt.Printf("Failed to execute %s: %v\n", action, runErr)
+		fmt.Printf("[ ERROR ] Failed to execute %s: %v\n", action, runErr)
 		if len(cmdOut) > 0 {
 			fmt.Printf("\nCommand output:\n%s\n", string(cmdOut))
 		}
 	} else {
-		fmt.Printf("Successfully executed '%s'.\n", action)
+		fmt.Printf("[ SUCCESS ] Successfully executed '%s'.\n", action)
 		if len(cmdOut) > 0 {
 			fmt.Printf("\nOutput:\n%s\n", string(cmdOut))
 		}
