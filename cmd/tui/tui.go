@@ -10,7 +10,6 @@ import (
 		tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/common-nighthawk/go-figure"
 )
 
 type model struct {
@@ -64,7 +63,7 @@ func initialModel() model {
 	commandPalette.Init()
 
 	// Generate solid pseudo-3D block-style banner (ANSI Shadow variant)
-	bannerRaw := figure.NewFigure("PORTAL", "ANSI Shadow", true).String()
+	bannerRaw := "███████  ███████ ███████ █████████ ██████ ███     \n███▀▀██████▀▀▀██████▀▀████▀▀███▀▀████▀▀██████     \n███████████   ███████████   ███   ███████████     \n███▄▄▄█ ███   ██████▄▄███   ███   ███▄▄██████     \n███     ████████████  ███   ███   ███  ███████████\n█▄█      █▄▄▄▄▄█ █▄█  █▄█   █▄█   █▄█  █▄██▄▄▄▄▄▄█\n"
 	bannerRaw = strings.ReplaceAll(bannerRaw, "\r", "")
 	rawLines := strings.Split(bannerRaw, "\n")
 
