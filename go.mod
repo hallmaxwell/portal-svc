@@ -7,7 +7,6 @@ require (
 	github.com/charmbracelet/huh v1.0.0
 	github.com/charmbracelet/huh/spinner v0.0.0-20260223110133-9dc45e34a40b
 	github.com/charmbracelet/lipgloss v1.1.0
-	github.com/common-nighthawk/go-figure v0.0.0-20210622060536-734e95fb86be
 	github.com/kardianos/service v1.2.4
 	github.com/nxadm/tail v1.4.11
 	golang.org/x/sys v0.38.0
