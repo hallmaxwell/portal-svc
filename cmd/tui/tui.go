@@ -70,7 +70,14 @@ func initialModel() model {
 ███     ████████████  ███   ███   ███  ███████████
 █▄█      █▄▄▄▄▄█ █▄█  █▄█   █▄█   █▄█  █▄██▄▄▄▄▄▄█`
 	bannerRaw = strings.ReplaceAll(bannerRaw, "\r", "")
-	lines := strings.Split(bannerRaw, "\n")
+	rawLines := strings.Split(bannerRaw, "\n")
+
+	var grid [][]rune
+	for _, line := range rawLines {
+		if strings.TrimSpace(line) != "" {
+			grid = append(grid, []rune(line))
+		}
+	}
 
 	// Glowing fiery gold/orange theme, removing muddy reds
 	colors := []string{
@@ -82,16 +89,48 @@ func initialModel() model {
 		"#FF5F1F",
 	}
 
+	shadowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
 	var bannerLines []string
-	var colorIdx int
-	for _, line := range lines {
-		if strings.TrimSpace(line) == "" {
-			continue
+
+	// Render Layered Engine: Shift shadow 1 right, 1 down
+	// Which means shadow at (y, x) comes from original character at (y-1, x-1)
+	height := len(grid)
+	if height > 0 {
+		var maxLen int
+		for _, row := range grid {
+			if len(row) > maxLen {
+				maxLen = len(row)
+			}
 		}
-		color := colors[colorIdx%len(colors)]
-		style := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true)
-		bannerLines = append(bannerLines, style.Render(line))
-		colorIdx++
+
+		for y := 0; y <= height; y++ { // Go one extra row for the drop shadow
+			var b strings.Builder
+			color := colors[y%len(colors)]
+			fgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true)
+
+			for x := 0; x <= maxLen; x++ { // Go one extra col for the drop shadow
+				var fgRune, shadowRune rune = ' ', ' '
+
+				if y < height && x < len(grid[y]) {
+					fgRune = grid[y][x]
+				}
+
+				if y > 0 && x > 0 && y-1 < height && x-1 < len(grid[y-1]) {
+					if grid[y-1][x-1] != ' ' {
+						shadowRune = '░'
+					}
+				}
+
+				if fgRune != ' ' {
+					b.WriteString(fgStyle.Render(string(fgRune)))
+				} else if shadowRune != ' ' {
+					b.WriteString(shadowStyle.Render(string(shadowRune)))
+				} else {
+					b.WriteString(" ")
+				}
+			}
+			bannerLines = append(bannerLines, b.String())
+		}
 	}
 
 	return model{
