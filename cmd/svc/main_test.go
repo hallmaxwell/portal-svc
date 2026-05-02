@@ -151,6 +151,37 @@ func TestBoundedLogWriter_Write(t *testing.T) {
 	}
 }
 
+func TestWriteLog(t *testing.T) {
+	tempDir := t.TempDir()
+	initLogFiles(tempDir)
+
+	// Test info routing
+	writeLog("info", "prefix_info", "info message", false)
+
+	dataInfo, _ := os.ReadFile(infoLogFilePath)
+	dataError, _ := os.ReadFile(errorLogFilePath)
+
+	if !strings.Contains(string(dataInfo), "prefix_info info message") {
+		t.Errorf("Expected info log to contain info message")
+	}
+	if strings.Contains(string(dataError), "prefix_info info message") {
+		t.Errorf("Did not expect error log to contain info message")
+	}
+
+	// Test error routing
+	writeLog("error", "prefix_error", "error message", false)
+
+	dataInfo, _ = os.ReadFile(infoLogFilePath)
+	dataError, _ = os.ReadFile(errorLogFilePath)
+
+	if !strings.Contains(string(dataInfo), "prefix_error error message") {
+		t.Errorf("Expected info log to contain error message")
+	}
+	if !strings.Contains(string(dataError), "prefix_error error message") {
+		t.Errorf("Expected error log to contain error message")
+	}
+}
+
 func TestBoundedLogWriter_Concurrency(t *testing.T) {
 	tempDir := t.TempDir()
 	logFile := filepath.Join(tempDir, "test_concurrent.log")
