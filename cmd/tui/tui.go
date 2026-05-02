@@ -38,11 +38,11 @@ func initialModel() model {
 	t.Focused.Base = lipgloss.NewStyle().
 		Foreground(lipgloss.Color("#FF8C00")).Bold(true).
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#FF8C00")).
+		BorderForeground(lipgloss.Color("#555555")).
 		Padding(0, 1).
 		Width(60)
-	t.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
-	t.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
+	t.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
+	t.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
 
 	commandPalette := huh.NewForm(
 		huh.NewGroup(
@@ -265,11 +265,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		t.Focused.Base = lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#FF8C00")).Bold(true).
 			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#FF8C00")).
+			BorderForeground(lipgloss.Color("#555555")).
 			Padding(0, 1).
 			Width(m.effectiveWidth)
-		t.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
-		t.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
+		t.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
+		t.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
 		m.commandPalette = m.commandPalette.WithTheme(t)
 
 	case logLineMsg:
