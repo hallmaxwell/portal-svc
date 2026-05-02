@@ -17,6 +17,7 @@ type model struct {
 	paletteValue   *string
 	width          int
 	height         int
+	effectiveWidth int
 	isExecuting    bool
 	bannerLines    []string
 
@@ -68,6 +69,7 @@ func initialModel() model {
 ███▄▄▄█ ███   ██████▄▄███   ███   ███▄▄██████
 ███     ████████████  ███   ███   ███  ███████████
 █▄█      █▄▄▄▄▄█ █▄█  █▄█   █▄█   █▄█  █▄██▄▄▄▄▄▄█`
+	bannerRaw = strings.ReplaceAll(bannerRaw, "\r", "")
 	lines := strings.Split(bannerRaw, "\n")
 
 	// Glowing fiery gold/orange theme, removing muddy reds
@@ -96,6 +98,7 @@ func initialModel() model {
 		commandPalette: commandPalette,
 		paletteValue: paletteValue,
 		bannerLines: bannerLines,
+		effectiveWidth: 60,
 	}
 }
 
@@ -215,6 +218,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.width = msg.Width
 		m.height = msg.Height
 
+		// Update form theme width if terminal is too small
+		m.effectiveWidth = 60
+		if m.width > 0 && m.width < 62 {
+			m.effectiveWidth = m.width - 2
+			if m.effectiveWidth < 10 {
+				m.effectiveWidth = 10
+			}
+		}
+
+		t := huh.ThemeBase()
+		t.Focused.Base = lipgloss.NewStyle().
+			Foreground(lipgloss.Color("#FF8C00")).Bold(true).
+			Border(lipgloss.RoundedBorder()).
+			BorderForeground(lipgloss.Color("#FF8C00")).
+			Padding(0, 1).
+			Width(m.effectiveWidth)
+		t.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
+		t.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
+		m.commandPalette = m.commandPalette.WithTheme(t)
+
 	case logLineMsg:
 		m.commandOutput = strings.Split(string(msg), "\n")
 		m.isExecuting = false
@@ -314,11 +337,12 @@ func (m model) View() string {
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#555555")).
 			Padding(0, 1).
-			Width(60)
+			Width(m.effectiveWidth)
 		inputView = greyStyle.Render("> " + *m.paletteValue)
 	} else {
 		// Enforce fixed width for the input block to ensure it centers as a cohesive unit
-		inputView = lipgloss.NewStyle().Width(60).Render(m.commandPalette.View())
+		// Also override the width in case m.width is smaller than 60
+		inputView = lipgloss.NewStyle().Width(m.effectiveWidth).Render(m.commandPalette.View())
 	}
 
 	// Center the input block horizontally
@@ -329,7 +353,7 @@ func (m model) View() string {
 	if m.childForm != nil {
 		formView := m.childForm.View()
 		// Huh forms often output with trailing spaces/newlines, we can center the entire block
-		s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Width(60).Render(formView)))
+		s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Width(m.effectiveWidth).Render(formView)))
 		s.WriteString("\n")
 	} else if len(m.commandOutput) > 0 {
 		outStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
