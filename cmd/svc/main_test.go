@@ -99,7 +99,7 @@ func BenchmarkBoundedLogWriter(b *testing.B) {
 	tmpDir := b.TempDir()
 	filePath := filepath.Join(tmpDir, "test.log")
 
-	os.WriteFile(filePath, []byte(strings.Repeat("existing log line\n", 100)), 0666)
+	os.WriteFile(filePath, []byte(strings.Repeat("existing log line\n", 100)), 0600)
 
 	logger := &boundedLogger{filePath: filePath, maxLines: 100}
 
