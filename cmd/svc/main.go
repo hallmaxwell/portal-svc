@@ -49,8 +49,8 @@ func initLogFiles(baseDir string) {
 	if baseDir == "" {
 		baseDir = getBaseDir()
 	}
-	infoLogFilePath = filepath.Join(baseDir, "portal_svc_info.log")
-	errorLogFilePath = filepath.Join(baseDir, "portal_svc_error.log")
+	infoLogFilePath = filepath.Join(baseDir, "access.log")
+	errorLogFilePath = filepath.Join(baseDir, "error.log")
 
 	if _, err := os.Stat(infoLogFilePath); os.IsNotExist(err) {
 		_ = os.WriteFile(infoLogFilePath, []byte(""), 0600)
@@ -137,7 +137,7 @@ func (w *singBoxLogWriter) Write(p []byte) (n int, err error) {
 		if len(strings.TrimSpace(l)) > 0 {
 			level := "info"
 			lowerL := strings.ToLower(l)
-			if strings.Contains(lowerL, "error") || strings.Contains(lowerL, "fatal") || w.isStderr {
+			if strings.Contains(lowerL, "error") || strings.Contains(lowerL, "fatal") {
 				level = "error"
 			}
 			writeLog(level, "sing-box:", l, w.printToStdout)
@@ -378,9 +378,9 @@ func handleLogsCmd(args []string) {
 	logsCmd.Parse(args)
 
 	baseDir := getBaseDir()
-	targetLogFile := filepath.Join(baseDir, "portal_svc_info.log")
+	targetLogFile := filepath.Join(baseDir, "access.log")
 	if logsCmd.NArg() > 0 && logsCmd.Arg(0) == "error" {
-		targetLogFile = filepath.Join(baseDir, "portal_svc_error.log")
+		targetLogFile = filepath.Join(baseDir, "error.log")
 	}
 
 	if _, err := os.Stat(targetLogFile); os.IsNotExist(err) {
