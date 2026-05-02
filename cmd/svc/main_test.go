@@ -60,7 +60,8 @@ func TestSingBoxLogWriter(t *testing.T) {
 			// but we can at least test that Write processes without crashing.
 			// Ideally we'd reset the globals and check them.
 
-			initLogFiles()
+			tempDir := t.TempDir()
+			initLogFiles(tempDir)
 
 			_, err := writer.Write([]byte(tt.input + "\n"))
 			if err != nil {

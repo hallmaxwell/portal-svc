@@ -22,13 +22,21 @@ import (
 )
 
 var (
-	infoLogFilePath  = filepath.Join(os.TempDir(), "portal_svc_info.log")
-	errorLogFilePath = filepath.Join(os.TempDir(), "portal_svc_error.log")
+	infoLogFilePath  string
+	errorLogFilePath string
 
 	infoLogger  *boundedLogger
 	errorLogger *boundedLogger
 	logMu       sync.Mutex
 )
+
+func getBaseDir() string {
+	exe, err := os.Executable()
+	if err != nil {
+		return "."
+	}
+	return filepath.Dir(exe)
+}
 
 type boundedLogger struct {
 	filePath string
@@ -37,9 +45,19 @@ type boundedLogger struct {
 	loaded   bool
 }
 
-func initLogFiles() {
-	_ = os.WriteFile(infoLogFilePath, []byte(""), 0666)
-	_ = os.WriteFile(errorLogFilePath, []byte(""), 0666)
+func initLogFiles(baseDir string) {
+	if baseDir == "" {
+		baseDir = getBaseDir()
+	}
+	infoLogFilePath = filepath.Join(baseDir, "portal_svc_info.log")
+	errorLogFilePath = filepath.Join(baseDir, "portal_svc_error.log")
+
+	if _, err := os.Stat(infoLogFilePath); os.IsNotExist(err) {
+		_ = os.WriteFile(infoLogFilePath, []byte(""), 0600)
+	}
+	if _, err := os.Stat(errorLogFilePath); os.IsNotExist(err) {
+		_ = os.WriteFile(errorLogFilePath, []byte(""), 0600)
+	}
 
 	infoLogger = &boundedLogger{filePath: infoLogFilePath, maxLines: 1000}
 	errorLogger = &boundedLogger{filePath: errorLogFilePath, maxLines: 1000}
@@ -73,7 +91,7 @@ func appendToLog(logger *boundedLogger, lines []string) {
 	}
 
 	outData := strings.Join(logger.lines, "\n") + "\n"
-	_ = os.WriteFile(logger.filePath, []byte(outData), 0666)
+	_ = os.WriteFile(logger.filePath, []byte(outData), 0600)
 }
 
 func writeLog(level, prefix, msg string, printToStdout bool) {
@@ -155,15 +173,19 @@ func (p *dockProgram) Start(s service.Service) error {
 }
 
 func (p *dockProgram) run() {
-	initLogFiles()
+	exe, err := os.Executable()
+	baseDir := "."
+	if err == nil {
+		baseDir = filepath.Dir(exe)
+	}
+
+	initLogFiles(baseDir)
 	sysLogInfo("Starting service run loop...", false)
 
-	exe, err := os.Executable()
 	if err != nil {
 		sysLogError(fmt.Sprintf("Failed to get executable path: %v", err), false)
-		return
+		os.Exit(1)
 	}
-	baseDir := filepath.Dir(exe)
 
 	singBoxBin := "sing-box"
 	if runtime.GOOS == "windows" {
@@ -240,6 +262,7 @@ func (p *dockProgram) run() {
 
 	if !p.stopping {
 		sysLogError("Sing-box process exited unexpectedly", false)
+		os.Exit(1)
 	}
 }
 
@@ -265,7 +288,7 @@ func (p *dockProgram) monitorNetwork() {
 				if failCount >= 3 {
 					p.cleanup()
 					sysLogError("Network health check failed, triggering restart", false)
-					return
+					os.Exit(1)
 				}
 			} else {
 				failCount = 0
@@ -286,7 +309,7 @@ func (p *dockProgram) Stop(s service.Service) error {
 // Transit Logic
 // ==========================================
 func runTransit(templatePath string) {
-	initLogFiles()
+	initLogFiles("")
 
 	data, err := os.ReadFile(templatePath)
 	if err != nil {
@@ -354,9 +377,10 @@ func handleLogsCmd(args []string) {
 
 	logsCmd.Parse(args)
 
-	targetLogFile := infoLogFilePath
+	baseDir := getBaseDir()
+	targetLogFile := filepath.Join(baseDir, "portal_svc_info.log")
 	if logsCmd.NArg() > 0 && logsCmd.Arg(0) == "error" {
-		targetLogFile = errorLogFilePath
+		targetLogFile = filepath.Join(baseDir, "portal_svc_error.log")
 	}
 
 	if _, err := os.Stat(targetLogFile); os.IsNotExist(err) {
