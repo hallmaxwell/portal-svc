@@ -11,84 +11,172 @@ import (
 
 func TestSingBoxLogWriter(t *testing.T) {
 	tests := []struct {
-		name       string
-		input      string
-		isStderr   bool
-		wantLevel  string
-		wantStderr bool
+		name          string
+		input         string
+		isStderr      bool
+		printToStdout bool
+		wantLevel     string
+		wantStdoutStr string
+		wantStderrStr string
 	}{
 		{
-			name:       "Normal info log",
-			input:      "INFO[0000] sing-box started",
-			isStderr:   false,
-			wantLevel:  "info",
-			wantStderr: false,
+			name:          "Normal info log",
+			input:         "INFO[0000] sing-box started",
+			isStderr:      false,
+			printToStdout: true,
+			wantLevel:     "info",
+			wantStdoutStr: "sing-box: INFO[0000] sing-box started\n",
+			wantStderrStr: "",
 		},
 		{
-			name:       "Error keyword in log",
-			input:      "ERROR[0001] connection failed",
-			isStderr:   false,
-			wantLevel:  "error",
-			wantStderr: false, // In unified main.go, singBoxLogWriter itself doesn't directly write to os.Stderr unless in writeLog, but let's check
+			name:          "Error keyword in log",
+			input:         "ERROR[0001] connection failed",
+			isStderr:      false,
+			printToStdout: true,
+			wantLevel:     "error",
+			wantStdoutStr: "",
+			wantStderrStr: "sing-box: ERROR[0001] connection failed\n",
 		},
 		{
-			name:       "Fatal keyword in log",
-			input:      "FATAL[0002] config invalid",
-			isStderr:   false,
-			wantLevel:  "error",
-			wantStderr: false,
+			name:          "Fatal keyword in log",
+			input:         "FATAL[0002] config invalid",
+			isStderr:      false,
+			printToStdout: true,
+			wantLevel:     "error",
+			wantStdoutStr: "",
+			wantStderrStr: "sing-box: FATAL[0002] config invalid\n",
 		},
 		{
-			name:       "Stderr stream",
-			input:      "some unexpected error output",
-			isStderr:   true,
-			wantLevel:  "error",
-			wantStderr: false,
+			name:          "Stderr stream ignores source stream when no keyword",
+			input:         "some unexpected output without keywords",
+			isStderr:      true,
+			printToStdout: true,
+			wantLevel:     "info", // memory override: strictly ignores the stream source when there is no keyword in the log
+			wantStdoutStr: "sing-box: some unexpected output without keywords\n",
+			wantStderrStr: "",
+		},
+		{
+			name:          "Stderr stream with error keyword",
+			input:         "some unexpected error output",
+			isStderr:      true,
+			printToStdout: true,
+			wantLevel:     "error",
+			wantStdoutStr: "",
+			wantStderrStr: "sing-box: some unexpected error output\n",
+		},
+		{
+			name:          "Multiple lines",
+			input:         "INFO[0000] line 1\nERROR[0001] line 2\n\nINFO[0002] line 3",
+			isStderr:      false,
+			printToStdout: true,
+			wantLevel:     "mixed",
+			wantStdoutStr: "sing-box: INFO[0000] line 1\nsing-box: INFO[0002] line 3\n",
+			wantStderrStr: "sing-box: ERROR[0001] line 2\n",
+		},
+		{
+			name:          "Only empty lines",
+			input:         "\n\n  \n",
+			isStderr:      false,
+			printToStdout: true,
+			wantLevel:     "none",
+			wantStdoutStr: "",
+			wantStderrStr: "",
+		},
+		{
+			name:          "printToStdout is false",
+			input:         "INFO[0000] hidden log",
+			isStderr:      false,
+			printToStdout: false,
+			wantLevel:     "info",
+			wantStdoutStr: "",
+			wantStderrStr: "",
 		},
 	}
 
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
-			// Mock stderr
+			oldStdout := os.Stdout
 			oldStderr := os.Stderr
-			r, w, _ := os.Pipe()
-			os.Stderr = w
 
-			writer := &singBoxLogWriter{isStderr: tt.isStderr, printToStdout: false}
+			rOut, wOut, _ := os.Pipe()
+			rErr, wErr, _ := os.Pipe()
 
-			// We can't easily capture infoLogger/errorLogger since they are globals,
-			// but we can at least test that Write processes without crashing.
-			// Ideally we'd reset the globals and check them.
+			os.Stdout = wOut
+			os.Stderr = wErr
+
+			// Restore global streams on exit to prevent side-effects on other tests
+			defer func() {
+				os.Stdout = oldStdout
+				os.Stderr = oldStderr
+				wOut.Close()
+				wErr.Close()
+			}()
+
+			writer := &singBoxLogWriter{isStderr: tt.isStderr, printToStdout: tt.printToStdout}
 
 			tempDir := t.TempDir()
 			initLogFiles(tempDir)
 
-			_, err := writer.Write([]byte(tt.input + "\n"))
+			n, err := writer.Write([]byte(tt.input))
 			if err != nil {
 				t.Fatalf("Write failed: %v", err)
 			}
 
-			w.Close()
+			if n != len([]byte(tt.input)) {
+				t.Errorf("Expected Write to return %d, got %d", len([]byte(tt.input)), n)
+			}
+
+			wOut.Close()
+			wErr.Close()
+			os.Stdout = oldStdout
 			os.Stderr = oldStderr
 
-			var buf bytes.Buffer
-			buf.ReadFrom(r)
+			var bufOut bytes.Buffer
+			bufOut.ReadFrom(rOut)
 
-			// read log files to check level
+			var bufErr bytes.Buffer
+			bufErr.ReadFrom(rErr)
+
+			if bufOut.String() != tt.wantStdoutStr {
+				t.Errorf("Expected stdout %q, got %q", tt.wantStdoutStr, bufOut.String())
+			}
+
+			if bufErr.String() != tt.wantStderrStr {
+				t.Errorf("Expected stderr %q, got %q", tt.wantStderrStr, bufErr.String())
+			}
+
 			dataInfo, _ := os.ReadFile(infoLogFilePath)
 			dataError, _ := os.ReadFile(errorLogFilePath)
 
-			if !strings.Contains(string(dataInfo), "sing-box: "+tt.input) {
-				t.Errorf("Expected info log to contain %q, got %q", tt.input, string(dataInfo))
-			}
-
-			if tt.wantLevel == "error" {
+			if tt.wantLevel == "info" {
+				if !strings.Contains(string(dataInfo), "sing-box: "+tt.input) {
+					t.Errorf("Expected info log to contain %q, got %q", tt.input, string(dataInfo))
+				}
+				if strings.Contains(string(dataError), "sing-box: "+tt.input) {
+					t.Errorf("Did not expect error log to contain %q", tt.input)
+				}
+			} else if tt.wantLevel == "error" {
+				if !strings.Contains(string(dataInfo), "sing-box: "+tt.input) {
+					t.Errorf("Expected info log to contain %q, got %q", tt.input, string(dataInfo))
+				}
 				if !strings.Contains(string(dataError), "sing-box: "+tt.input) {
 					t.Errorf("Expected error log to contain %q, got %q", tt.input, string(dataError))
 				}
-			} else {
-				if strings.Contains(string(dataError), "sing-box: "+tt.input) {
-					t.Errorf("Did not expect error log to contain %q", tt.input)
+			} else if tt.wantLevel == "mixed" {
+				if !strings.Contains(string(dataInfo), "sing-box: INFO[0000] line 1") ||
+					!strings.Contains(string(dataInfo), "sing-box: ERROR[0001] line 2") ||
+					!strings.Contains(string(dataInfo), "sing-box: INFO[0002] line 3") {
+					t.Errorf("Missing lines in info log: %q", string(dataInfo))
+				}
+				if !strings.Contains(string(dataError), "sing-box: ERROR[0001] line 2") {
+					t.Errorf("Expected error log to contain line 2: %q", string(dataError))
+				}
+			} else if tt.wantLevel == "none" {
+				if len(strings.TrimSpace(string(dataInfo))) > 0 {
+					t.Errorf("Expected empty info log, got %q", string(dataInfo))
+				}
+				if len(strings.TrimSpace(string(dataError))) > 0 {
+					t.Errorf("Expected empty error log, got %q", string(dataError))
 				}
 			}
 		})
