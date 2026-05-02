@@ -15,6 +15,7 @@ import (
 	"time"
 
 	"hawego/portal/util"
+	"hawego/portal/cmd/tui"
 
 	"github.com/kardianos/service"
 	"github.com/nxadm/tail"
@@ -400,8 +401,8 @@ func handleLogsCmd(args []string) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: portal-svc <dock|transit|logs> [args]")
-		os.Exit(1)
+		tui.RunTUI()
+		return
 	}
 
 	cmd := os.Args[1]
