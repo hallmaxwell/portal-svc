@@ -7,15 +7,14 @@ import (
 	"path/filepath"
 	"strings"
 
-	"github.com/charmbracelet/bubbles/textinput"
-	tea "github.com/charmbracelet/bubbletea"
+		tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
-	"github.com/common-nighthawk/go-figure"
 )
 
 type model struct {
-	textInput      textinput.Model
+	commandPalette *huh.Form
+	paletteValue   *string
 	width          int
 	height         int
 	isExecuting    bool
@@ -33,23 +32,52 @@ type model struct {
 }
 
 func initialModel() model {
-	ti := textinput.New()
-	ti.Placeholder = "Command Palette"
-	ti.Focus()
-	ti.CharLimit = 156
-	ti.Width = 60 // Fixed width
+	paletteValue := new(string)
+	t := huh.ThemeBase()
+	t.Focused.Base = lipgloss.NewStyle().
+		Foreground(lipgloss.Color("#FF8C00")).Bold(true).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(lipgloss.Color("#FF8C00")).
+		Padding(0, 1).
+		Width(60)
+	t.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
+	t.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
 
-	// Generate banner
-	myFigure := figure.NewFigure("PORTAL", "isometric1", true)
-	lines := strings.Split(myFigure.String(), "\n")
+	commandPalette := huh.NewForm(
+		huh.NewGroup(
+			huh.NewInput().
+				Value(paletteValue).
+				Placeholder("Command Palette").
+				Suggestions([]string{
+					"install (Install as System Service)",
+					"start (Start Service)",
+					"stop (Stop Service)",
+					"restart (Restart Service)",
+					"logs (View Error/Access Logs)",
+					"uninstall (Remove Service)",
+					"exit (Quit UI)",
+				}),
+		),
+	).WithTheme(t).WithShowHelp(false)
+	commandPalette.Init()
 
+	// Generate solid pseudo-3D block-style banner (ANSI Shadow variant)
+	bannerRaw := `███████  ███████ ███████ █████████ ██████ ███
+███▄▄██████▄▄▄██████▄▄████▄▄███▄▄████▄▄██████
+███████████   ███████████   ███   ███████████
+███▄▄▄█ ███   ██████▄▄███   ███   ███▄▄██████
+███     ████████████  ███   ███   ███  ███████████
+█▄█      █▄▄▄▄▄█ █▄█  █▄█   █▄█   █▄█  █▄██▄▄▄▄▄▄█`
+	lines := strings.Split(bannerRaw, "\n")
+
+	// Glowing fiery gold/orange theme, removing muddy reds
 	colors := []string{
-		"#FFD700", // Gold
-		"#FFA500", // Orange
-		"#FF8C00", // DarkOrange
-		"#FF7F50", // Coral
-		"#FF6347", // Tomato
-		"#FF4500", // OrangeRed
+		"#FFD700",
+		"#FFC000",
+		"#FFA500",
+		"#FF8C00",
+		"#FF7000",
+		"#FF5F1F",
 	}
 
 	var bannerLines []string
@@ -65,13 +93,14 @@ func initialModel() model {
 	}
 
 	return model{
-		textInput:   ti,
+		commandPalette: commandPalette,
+		paletteValue: paletteValue,
 		bannerLines: bannerLines,
 	}
 }
 
 func (m model) Init() tea.Cmd {
-	return textinput.Blink
+	return m.commandPalette.Init()
 }
 
 type logLineMsg string
@@ -133,11 +162,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		if msg.Type == tea.KeyEnter {
-			inputString := m.textInput.Value()
+		formModel, formCmd := m.commandPalette.Update(msg)
+		m.commandPalette = formModel.(*huh.Form)
+
+		if m.commandPalette.State == huh.StateCompleted {
+			inputString := *m.paletteValue
 			fields := strings.Fields(inputString)
 			if len(fields) == 0 {
-				return m, nil
+				*m.paletteValue = ""
+				m.commandPalette.Init()
+				return m, tea.Batch(formCmd, m.commandPalette.Init())
 			}
 
 			action := fields[0]
@@ -151,31 +185,31 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 
 			m.isExecuting = true
-			m.textInput.Blur()
 			m.commandOutput = nil
 
 			if action == "setup" {
 				m.setupData = GetSetupData()
 				m.childForm = BuildSetupForm(m.setupData)
 				m.childForm.Init()
-				return m, nil
+				return m, tea.Batch(formCmd, m.childForm.Init())
 			} else if action == "install" {
-				// we run install then prompt confirmStart
-				return m, executeAction(action, args)
+				return m, tea.Batch(formCmd, executeAction(action, args))
 			} else if action == "start" {
-				return m, executeAction(action, args)
+				return m, tea.Batch(formCmd, executeAction(action, args))
 			} else if action == "stop" || action == "uninstall" {
-				return m, executeAction(action, args)
+				return m, tea.Batch(formCmd, executeAction(action, args))
 			} else if action == "logs" {
-				return m, executeAction(action, args)
+				return m, tea.Batch(formCmd, executeAction(action, args))
 			} else {
 				m.commandOutput = []string{fmt.Sprintf("[ ERROR ] Action %s not fully implemented yet.", action)}
 				m.isExecuting = false
-				m.textInput.SetValue("")
-				m.textInput.Focus()
-				return m, textinput.Blink
+				*m.paletteValue = ""
+				m.commandPalette.Init()
+				return m, tea.Batch(formCmd, m.commandPalette.Init())
 			}
 		}
+
+		return m, formCmd
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -184,9 +218,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 	case logLineMsg:
 		m.commandOutput = strings.Split(string(msg), "\n")
 		m.isExecuting = false
-		m.textInput.SetValue("")
-		m.textInput.Focus()
-		return m, textinput.Blink
+		*m.paletteValue = ""
+		m.commandPalette.Init()
+		return m, m.commandPalette.Init()
 
 	case processFinishedMsg:
 		if msg.err != nil {
@@ -194,7 +228,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		} else {
 			m.commandOutput = []string{"[ SUCCESS ] Action completed."}
 
-			inputString := m.textInput.Value()
+			inputString := *m.paletteValue
 			fields := strings.Fields(inputString)
 			if len(fields) > 0 {
 				action := fields[0]
@@ -211,9 +245,9 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.isExecuting = false
-		m.textInput.SetValue("")
-		m.textInput.Focus()
-		return m, textinput.Blink
+		*m.paletteValue = ""
+		m.commandPalette.Init()
+		return m, m.commandPalette.Init()
 
 	case formCompletedMsg:
 		if m.setupData != nil {
@@ -229,20 +263,20 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.setupData = nil
 		} else {
-			inputString := m.textInput.Value()
+			inputString := *m.paletteValue
 			fields := strings.Fields(inputString)
 			if len(fields) > 0 {
 				action := fields[0]
 				if action == "install" {
 					if m.confirmStart {
 						m.childForm = nil
-						m.textInput.SetValue("start") // visually update
+						*m.paletteValue = "start" // visually update
 						return m, executeAction("start", nil)
 					}
 				} else if action == "start" {
 					if m.afterStartVal == "logs" {
 						m.childForm = nil
-						m.textInput.SetValue("logs") // visually update
+						*m.paletteValue = "logs" // visually update
 						return m, executeAction("logs", nil)
 					}
 				}
@@ -250,13 +284,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.childForm = nil
 		m.isExecuting = false
-		m.textInput.SetValue("")
-		m.textInput.Focus()
-		return m, textinput.Blink
+		*m.paletteValue = ""
+		m.commandPalette.Init()
+		return m, m.commandPalette.Init()
 	}
 
-	m.textInput, cmd = m.textInput.Update(msg)
-	return m, cmd
+	formModel, formCmd := m.commandPalette.Update(msg)
+	m.commandPalette = formModel.(*huh.Form)
+	return m, formCmd
 }
 
 func (m model) View() string {
@@ -270,30 +305,21 @@ func (m model) View() string {
 	s.WriteString("\n\n")
 
 	// Input styling
-	var inputStyle lipgloss.Style
+	var inputView string
 	if m.isExecuting {
-		// Greyed out
-		inputStyle = lipgloss.NewStyle().
+		// Greyed out fallback since huh.Form doesn't allow dynamic theme changes post-init easily,
+		// we fake the visual component when executing.
+		greyStyle := lipgloss.NewStyle().
 			Foreground(lipgloss.Color("#555555")).
 			Border(lipgloss.RoundedBorder()).
 			BorderForeground(lipgloss.Color("#555555")).
 			Padding(0, 1).
 			Width(60)
-		m.textInput.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
-		m.textInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+		inputView = greyStyle.Render("> " + *m.paletteValue)
 	} else {
-		// Bright orange theme
-		inputStyle = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF8C00")).Bold(true).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#FF8C00")).
-			Padding(0, 1).
-			Width(60)
-		m.textInput.PromptStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
-		m.textInput.TextStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#FF8C00")).Bold(true)
+		// Enforce fixed width for the input block to ensure it centers as a cohesive unit
+		inputView = lipgloss.NewStyle().Width(60).Render(m.commandPalette.View())
 	}
-
-	inputView := inputStyle.Render(m.textInput.View())
 
 	// Center the input block horizontally
 	s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, inputView))
@@ -302,11 +328,9 @@ func (m model) View() string {
 	// Render Child Form
 	if m.childForm != nil {
 		formView := m.childForm.View()
-		lines := strings.Split(formView, "\n")
-		for _, line := range lines {
-			s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, line))
-			s.WriteString("\n")
-		}
+		// Huh forms often output with trailing spaces/newlines, we can center the entire block
+		s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Width(60).Render(formView)))
+		s.WriteString("\n")
 	} else if len(m.commandOutput) > 0 {
 		outStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
 		displayLines := m.commandOutput
