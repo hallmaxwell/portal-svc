@@ -7,19 +7,25 @@ import (
 	"path/filepath"
 	"strings"
 
-		tea "github.com/charmbracelet/bubbletea"
+	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
 )
 
 type model struct {
-	commandPalette *huh.Form
 	paletteValue   *string
 	width          int
 	height         int
 	effectiveWidth int
 	isExecuting    bool
 	bannerLines    []string
+
+	// State for text input and dropdown
+	textInput      string
+	cursorIndex    int
+	dropdownMode   string // "", "command", "path"
+	options        []string
+	selectedIndex  int
 
 	// State for nested forms
 	childForm      *huh.Form
@@ -34,36 +40,9 @@ type model struct {
 
 func initialModel() model {
 	paletteValue := new(string)
-	t := huh.ThemeBase()
-	t.Focused.Base = lipgloss.NewStyle().
-		Foreground(lipgloss.Color("#FF8C00")).Bold(true).
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(lipgloss.Color("#555555")).
-		Padding(0, 1).
-		Width(60)
-	t.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
-	t.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
 
-	commandPalette := huh.NewForm(
-		huh.NewGroup(
-			huh.NewInput().
-				Value(paletteValue).
-				Placeholder("Command Palette").
-				Suggestions([]string{
-					"install (Install as System Service)",
-					"start (Start Service)",
-					"stop (Stop Service)",
-					"restart (Restart Service)",
-					"logs (View Error/Access Logs)",
-					"uninstall (Remove Service)",
-					"exit (Quit UI)",
-				}),
-		),
-	).WithTheme(t).WithShowHelp(false)
-	commandPalette.Init()
-
-	// Generate solid pseudo-3D block-style banner (ANSI Shadow variant)
-	bannerRaw := "███████  ███████ ███████ █████████ ██████ ███     \n███▀▀██████▀▀▀██████▀▀████▀▀███▀▀████▀▀██████     \n███████████   ███████████   ███   ███████████     \n███▄▄▄█ ███   ██████▄▄███   ███   ███▄▄██████     \n███     ████████████  ███   ███   ███  ███████████\n█▄█      █▄▄▄▄▄█ █▄█  █▄█   █▄█   █▄█  █▄██▄▄▄▄▄▄█\n"
+	// Generate solid 2D block-style banner
+	bannerRaw := "██████   ██████  ██████  ████████  █████  ██      \n██   ██ ██    ██ ██   ██    ██    ██   ██ ██      \n██████  ██    ██ ██████     ██    ███████ ██      \n██      ██    ██ ██   ██    ██    ██   ██ ██      \n██       ██████  ██   ██    ██    ██   ██ ███████ \n"
 	bannerRaw = strings.ReplaceAll(bannerRaw, "\r", "")
 	rawLines := strings.Split(bannerRaw, "\n")
 
@@ -129,7 +108,6 @@ func initialModel() model {
 	}
 
 	return model{
-		commandPalette: commandPalette,
 		paletteValue: paletteValue,
 		bannerLines: bannerLines,
 		effectiveWidth: 60,
@@ -137,7 +115,7 @@ func initialModel() model {
 }
 
 func (m model) Init() tea.Cmd {
-	return m.commandPalette.Init()
+	return nil
 }
 
 type logLineMsg string
@@ -199,16 +177,108 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			return m, nil
 		}
 
-		formModel, formCmd := m.commandPalette.Update(msg)
-		m.commandPalette = formModel.(*huh.Form)
+		// Handle text input and dropdown logic
+		if m.dropdownMode != "" {
+			switch msg.Type {
+			case tea.KeyUp:
+				m.selectedIndex--
+				if m.selectedIndex < 0 {
+					m.selectedIndex = len(m.options) - 1
+				}
+				return m, nil
+			case tea.KeyDown:
+				m.selectedIndex++
+				if m.selectedIndex >= len(m.options) {
+					m.selectedIndex = 0
+				}
+				return m, nil
+			case tea.KeyRight, tea.KeyEnter:
+				if len(m.options) > 0 {
+					// Replace trigger and text with selection
+					parts := strings.SplitN(m.textInput, m.dropdownMode, 2)
+					if len(parts) > 0 {
+						m.textInput = parts[0] + m.options[m.selectedIndex] + " "
+					} else {
+						m.textInput = m.options[m.selectedIndex] + " "
+					}
+					m.cursorIndex = len([]rune(m.textInput))
+				}
+				m.dropdownMode = ""
+				m.options = nil
+				return m, nil
+			case tea.KeyBackspace, tea.KeyDelete:
+				// Fall through to default text editing, but re-evaluate dropdown mode
+				m.dropdownMode = ""
+				m.options = nil
+			case tea.KeyRunes:
+				if msg.String() == " " {
+					m.dropdownMode = ""
+					m.options = nil
+				}
+			}
+		}
 
-		if m.commandPalette.State == huh.StateCompleted {
-			inputString := *m.paletteValue
+		switch msg.Type {
+		case tea.KeyBackspace, tea.KeyDelete:
+			if len(m.textInput) > 0 && m.cursorIndex > 0 {
+				runes := []rune(m.textInput)
+				m.textInput = string(runes[:m.cursorIndex-1]) + string(runes[m.cursorIndex:])
+				m.cursorIndex--
+			}
+		case tea.KeyLeft:
+			if m.cursorIndex > 0 {
+				m.cursorIndex--
+			}
+		case tea.KeyRight:
+			if m.cursorIndex < len([]rune(m.textInput)) {
+				m.cursorIndex++
+			}
+		case tea.KeyRunes, tea.KeySpace:
+			s := msg.String()
+			runes := []rune(m.textInput)
+			m.textInput = string(runes[:m.cursorIndex]) + s + string(runes[m.cursorIndex:])
+			m.cursorIndex += len([]rune(s))
+
+			if s == "/" {
+				m.dropdownMode = "/"
+				m.options = []string{
+					"install", "start", "stop", "restart", "logs", "uninstall", "exit", "setup",
+				}
+				m.selectedIndex = 0
+			} else if s == "@" {
+				m.dropdownMode = "@"
+
+				// Suggest configuration files
+				exe, _ := os.Executable()
+				baseDir := filepath.Dir(exe)
+				if strings.Contains(exe, "go-build") {
+					cwd, _ := os.Getwd()
+					baseDir = cwd
+				}
+
+				var fileOpts []string
+				files, _ := os.ReadDir(baseDir)
+				for _, f := range files {
+					if !f.IsDir() {
+						fileOpts = append(fileOpts, f.Name())
+					}
+				}
+				m.options = fileOpts
+				m.selectedIndex = 0
+			}
+		case tea.KeyEnter:
+			if m.dropdownMode != "" {
+				// Handled above
+				break
+			}
+			inputString := strings.TrimSpace(m.textInput)
+			*m.paletteValue = inputString
 			fields := strings.Fields(inputString)
 			if len(fields) == 0 {
+				m.textInput = ""
+				m.cursorIndex = 0
 				*m.paletteValue = ""
-				m.commandPalette.Init()
-				return m, tea.Batch(formCmd, m.commandPalette.Init())
+				return m, nil
 			}
 
 			action := fields[0]
@@ -224,10 +294,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			m.isExecuting = true
 			m.commandOutput = nil
 
+			var formCmd tea.Cmd
 			if action == "setup" {
 				m.setupData = GetSetupData()
 				m.childForm = BuildSetupForm(m.setupData)
-				m.childForm.Init()
 				return m, tea.Batch(formCmd, m.childForm.Init())
 			} else if action == "install" {
 				return m, tea.Batch(formCmd, executeAction(action, args))
@@ -240,13 +310,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.commandOutput = []string{fmt.Sprintf("[ ERROR ] Action %s not fully implemented yet.", action)}
 				m.isExecuting = false
+				m.textInput = ""
+				m.cursorIndex = 0
 				*m.paletteValue = ""
-				m.commandPalette.Init()
-				return m, tea.Batch(formCmd, m.commandPalette.Init())
+				return m, nil
 			}
 		}
 
-		return m, formCmd
+		return m, nil
 
 	case tea.WindowSizeMsg:
 		m.width = msg.Width
@@ -261,23 +332,14 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
-		t := huh.ThemeBase()
-		t.Focused.Base = lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#FF8C00")).Bold(true).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#555555")).
-			Padding(0, 1).
-			Width(m.effectiveWidth)
-		t.Focused.TextInput.Prompt = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
-		t.Focused.TextInput.Text = lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true)
-		m.commandPalette = m.commandPalette.WithTheme(t)
 
 	case logLineMsg:
 		m.commandOutput = strings.Split(string(msg), "\n")
 		m.isExecuting = false
+		m.textInput = ""
+		m.cursorIndex = 0
 		*m.paletteValue = ""
-		m.commandPalette.Init()
-		return m, m.commandPalette.Init()
+		return m, nil
 
 	case processFinishedMsg:
 		if msg.err != nil {
@@ -302,9 +364,10 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.isExecuting = false
+		m.textInput = ""
+		m.cursorIndex = 0
 		*m.paletteValue = ""
-		m.commandPalette.Init()
-		return m, m.commandPalette.Init()
+		return m, nil
 
 	case formCompletedMsg:
 		if m.setupData != nil {
@@ -341,14 +404,13 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.childForm = nil
 		m.isExecuting = false
+		m.textInput = ""
+		m.cursorIndex = 0
 		*m.paletteValue = ""
-		m.commandPalette.Init()
-		return m, m.commandPalette.Init()
+		return m, nil
 	}
 
-	formModel, formCmd := m.commandPalette.Update(msg)
-	m.commandPalette = formModel.(*huh.Form)
-	return m, formCmd
+	return m, nil
 }
 
 func (m model) View() string {
@@ -361,23 +423,8 @@ func (m model) View() string {
 	}
 	s.WriteString("\n\n")
 
-	// Input styling
-	var inputView string
-	if m.isExecuting {
-		// Greyed out fallback since huh.Form doesn't allow dynamic theme changes post-init easily,
-		// we fake the visual component when executing.
-		greyStyle := lipgloss.NewStyle().
-			Foreground(lipgloss.Color("#555555")).
-			Border(lipgloss.RoundedBorder()).
-			BorderForeground(lipgloss.Color("#555555")).
-			Padding(0, 1).
-			Width(m.effectiveWidth)
-		inputView = greyStyle.Render("> " + *m.paletteValue)
-	} else {
-		// Enforce fixed width for the input block to ensure it centers as a cohesive unit
-		// Also override the width in case m.width is smaller than 60
-		inputView = lipgloss.NewStyle().Width(m.effectiveWidth).Render(m.commandPalette.View())
-	}
+	// Render input box with gradient border
+	inputView := m.renderGradientBox()
 
 	// Center the input block horizontally
 	s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, inputView))
@@ -433,4 +480,152 @@ func RunTUI() {
 		fmt.Printf("Alas, there's been an error: %v", err)
 		os.Exit(1)
 	}
+}
+
+func (m model) renderGradientBox() string {
+	width := m.effectiveWidth
+	title := " Command Palette "
+
+	// Colors for fiery gradient
+	colors := []string{
+		"#FFD700",
+		"#FFC000",
+		"#FFA500",
+		"#FF8C00",
+		"#FF7000",
+		"#FF5F1F",
+	}
+
+	// Create gradient string function
+	gradientString := func(s string) string {
+		var b strings.Builder
+		runes := []rune(s)
+		for i, r := range runes {
+			colorIdx := i * len(colors) / len(runes)
+			if colorIdx >= len(colors) {
+				colorIdx = len(colors) - 1
+			}
+			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(colors[colorIdx])).Render(string(r)))
+		}
+		return b.String()
+	}
+
+	leftBorderLen := 2
+	rightBorderLen := width - leftBorderLen - len(title) - 2
+	if rightBorderLen < 0 {
+	    rightBorderLen = 0
+	}
+
+	topBorderStr := "╭" + strings.Repeat("─", leftBorderLen) + title + strings.Repeat("─", rightBorderLen) + "╮"
+	bottomBorderStr := "╰" + strings.Repeat("─", width-2) + "╯"
+
+	midLeft := gradientString("│")
+	midRight := gradientString("│")
+
+	// Highlight logic
+	renderInputLine := func() string {
+		if m.isExecuting {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Render(m.textInput)
+		}
+		if m.textInput == "" {
+			return lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Render("Type a command (e.g. install, start...)")
+		}
+
+		var styled strings.Builder
+		runes := []rune(m.textInput)
+
+		// Tokenize basic highlighting: first word command (green), paths containing / or \ (cyan)
+		words := strings.Fields(m.textInput)
+		if len(words) > 0 {
+		    cmdStr := words[0]
+		    cmdStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00FF00")).Bold(true)
+		    pathStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#00FFFF"))
+
+		    // Render char by char to handle cursor properly
+		    for i, r := range runes {
+		        style := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+
+		        // We will apply some basic highlighting just to show we handle it.
+		        // For an exact match, we can just check string index mappings.
+		        if i < len([]rune(cmdStr)) {
+		            style = cmdStyle
+		        } else {
+		            // check if part of a path token
+		            isPath := false
+		            for _, w := range words[1:] {
+		                if strings.Contains(w, "/") || strings.Contains(w, "\\") || strings.HasPrefix(w, ".") {
+		                    isPath = true
+		                    break
+		                }
+		            }
+		            if isPath {
+		                style = pathStyle
+		            }
+		        }
+
+		        // Invert for cursor
+		        if i == m.cursorIndex {
+		            style = style.Reverse(true)
+		        }
+
+		        styled.WriteString(style.Render(string(r)))
+		    }
+
+		    if m.cursorIndex == len(runes) {
+		        styled.WriteString(lipgloss.NewStyle().Reverse(true).Render(" "))
+		    }
+
+		    return styled.String()
+		}
+
+		return m.textInput
+	}
+
+	inputLine := renderInputLine()
+	prefix := "> "
+
+	stripAnsi := func(str string) int {
+	    return lipgloss.Width(str)
+	}
+
+	contentLen := stripAnsi(prefix) + stripAnsi(inputLine)
+	paddingLen := width - 2 - contentLen - 2
+	if paddingLen < 0 {
+	    paddingLen = 0
+	}
+
+	contentStr := fmt.Sprintf(" %s%s%s ", lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true).Render(prefix), inputLine, strings.Repeat(" ", paddingLen))
+
+	var b strings.Builder
+	b.WriteString(gradientString(topBorderStr) + "\n")
+	b.WriteString(midLeft + contentStr + midRight + "\n")
+	b.WriteString(gradientString(bottomBorderStr))
+
+	// Render dropdown options if active
+	if m.dropdownMode != "" && len(m.options) > 0 {
+	    for i, opt := range m.options {
+	        optStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
+	        if i == m.selectedIndex {
+	            optStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#FF8C00"))
+	        }
+	        // Pad to width using visual width rather than byte length
+	        optText := "  " + opt
+	        optWidth := lipgloss.Width(optText)
+	        if optWidth < width-4 {
+	            optText += strings.Repeat(" ", width-4-optWidth)
+	        } else if optWidth > width-4 {
+	            // Very rudimentary truncation, assuming ASCII-mostly path names for simplicity
+	            // If it's pure ASCII this is fine, otherwise it might slice mid-rune.
+	            // Proper truncation with lipgloss or runewidth can be complex, so we'll
+	            // just use runes to truncate
+	            runes := []rune(optText)
+	            if len(runes) > width-4 {
+	                optText = string(runes[:width-4])
+	            }
+	        }
+	        b.WriteString("\n" + lipgloss.PlaceHorizontal(m.width, lipgloss.Center, optStyle.Render(optText)))
+	    }
+	}
+
+	return b.String()
 }
