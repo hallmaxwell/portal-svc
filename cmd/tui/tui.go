@@ -13,6 +13,14 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
+var (
+	colorAccent = lipgloss.Color("#00D2FF")
+	colorText   = lipgloss.Color("#E0E0E0")
+	colorMuted  = lipgloss.Color("#737373")
+	colorBorder = lipgloss.Color("#404040")
+	colorBg     = lipgloss.Color("#1A1A1A") // Optional dark background
+)
+
 type model struct {
 	paletteValue   *string
 	width          int
@@ -45,79 +53,23 @@ type model struct {
 func initialModel() model {
 	paletteValue := new(string)
 
-	// Generate solid 2D block-style banner
-	bannerRaw := "██████   ██████  ██████  ████████  █████  ██      \n██   ██ ██    ██ ██   ██    ██    ██   ██ ██      \n██████  ██    ██ ██████     ██    ███████ ██      \n██      ██    ██ ██   ██    ██    ██   ██ ██      \n██       ██████  ██   ██    ██    ██   ██ ███████ \n"
+	// Generate clean ANSI Shadow block style banner
+	bannerRaw := `
+██████╗  ██████╗ ██████╗ ████████╗ █████╗ ██╗
+██╔══██╗██╔═══██╗██╔══██╗╚══██╔══╝██╔══██╗██║
+██████╔╝██║   ██║██████╔╝   ██║   ███████║██║
+██╔═══╝ ██║   ██║██╔══██╗   ██║   ██╔══██║██║
+██║     ╚██████╔╝██║  ██║   ██║   ██║  ██║███████╗
+╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚══════╝
+`
 	bannerRaw = strings.ReplaceAll(bannerRaw, "\r", "")
-	rawLines := strings.Split(bannerRaw, "\n")
+	rawLines := strings.Split(strings.Trim(bannerRaw, "\n"), "\n")
 
-	var grid [][]rune
+	var bannerLines []string
+	fgStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 	for _, line := range rawLines {
 		if strings.TrimSpace(line) != "" {
-			grid = append(grid, []rune(line))
-		}
-	}
-
-	// Teal/Navy/Khaki/Brown theme
-	colors := []string{
-		"#000080", // Navy
-		"#008080", // Teal
-		"#5F9EA0", // Cadet Blue
-		"#BDB76B", // Dark Khaki
-		"#D2B48C", // Tan
-		"#8B4513", // Saddle Brown
-	}
-
-	shadowStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
-	var bannerLines []string
-
-	// Render Layered Engine: Shift shadow left up (y, x-1) based on user "略微向左上移动少许最佳" (Slightly to the top-left).
-	// Since original was (y-1, x-1) meaning +1 down, +1 right from the shadow's perspective,
-	// let's adjust it to make it look shifted up and left relative to the foreground.
-	// A simpler and typical way is shadow slightly down and right, but user explicitly wants
-	// offset slightly to the top-left. Let's interpret "略微向左上移动少许" as moving the shadow left and up.
-	// If shadow is to the top-left of the text, that means text is to the bottom-right of the shadow.
-	// Let's implement an offset: dy = -1, dx = -1.
-	// So shadow at (y,x) comes from fg at (y-dy, x-dx) = (y+1, x+1).
-	height := len(grid)
-	if height > 0 {
-		var maxLen int
-		for _, row := range grid {
-			if len(row) > maxLen {
-				maxLen = len(row)
-			}
-		}
-
-		for y := -1; y < height; y++ { // Adjust y range to allow shadow above
-			var b strings.Builder
-			color := colors[(y+1+len(colors))%len(colors)] // avoid negative index
-			fgStyle := lipgloss.NewStyle().Foreground(lipgloss.Color(color)).Bold(true)
-
-			for x := -1; x < maxLen; x++ { // Adjust x range to allow shadow to left
-				var fgRune, shadowRune rune = ' ', ' '
-
-				if y >= 0 && x >= 0 && y < height && x < len(grid[y]) {
-					fgRune = grid[y][x]
-				}
-
-				// Shadow is from foreground shifted by dy=-1, dx=-1.
-				// This means the shadow is painted at (y,x) if there is a foreground character at (y+1, x+1).
-				if y+1 >= 0 && x+1 >= 0 && y+1 < height && x+1 < len(grid[y+1]) {
-					if grid[y+1][x+1] != ' ' {
-						shadowRune = '░'
-					}
-				}
-
-				if fgRune != ' ' {
-					b.WriteString(fgStyle.Render(string(fgRune)))
-				} else if shadowRune != ' ' {
-					b.WriteString(shadowStyle.Render(string(shadowRune)))
-				} else {
-					b.WriteString(" ")
-				}
-			}
-
-			// We might generate lines that are completely empty due to the shift. Let's only add non-empty lines, or keep it consistent.
-			bannerLines = append(bannerLines, b.String())
+			bannerLines = append(bannerLines, fgStyle.Render(line))
 		}
 	}
 
@@ -391,11 +343,11 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			if len(fields) > 0 {
 				action := fields[0]
 				if action == "install" {
-					m.childForm = huh.NewForm(huh.NewGroup(huh.NewConfirm().Title("Install complete. Start service now?").Value(&m.confirmStart)))
+					m.childForm = huh.NewForm(huh.NewGroup(huh.NewConfirm().Title("Install complete. Start service now?").Value(&m.confirmStart))).WithTheme(getCustomTheme())
 					m.childForm.Init()
 					return m, nil
 				} else if action == "start" {
-					m.childForm = huh.NewForm(huh.NewGroup(huh.NewSelect[string]().Title("Service started. View logs or return to menu?").Options(huh.NewOption("View logs", "logs"), huh.NewOption("Return to menu", "menu")).Value(&m.afterStartVal)))
+					m.childForm = huh.NewForm(huh.NewGroup(huh.NewSelect[string]().Title("Service started. View logs or return to menu?").Options(huh.NewOption("View logs", "logs"), huh.NewOption("Return to menu", "menu")).Value(&m.afterStartVal))).WithTheme(getCustomTheme())
 					m.childForm.Init()
 					return m, nil
 				}
@@ -480,7 +432,7 @@ func (m model) View() string {
 		s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Width(m.effectiveWidth).Render(formView)))
 		s.WriteString("\n")
 	} else if len(m.commandOutput) > 0 {
-		outStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
+		outStyle := lipgloss.NewStyle().Foreground(colorMuted)
 		displayLines := m.commandOutput
 		if len(displayLines) > 20 {
 			displayLines = displayLines[len(displayLines)-20:]
@@ -493,7 +445,7 @@ func (m model) View() string {
 
 	// Render footer with version and system checks
 	s.WriteString("\n\n")
-	footerStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#555555"))
+	footerStyle := lipgloss.NewStyle().Foreground(colorMuted)
 	versionText := "Portal TUI v1.0.0"
 
 	statusText := m.singboxStatus
@@ -544,51 +496,18 @@ func (m model) renderGradientBox() string {
 	width := m.effectiveWidth
 	title := " Command Palette "
 
-	// Colors for fiery gradient
-	colors := []string{
-		"#FFD700",
-		"#FFC000",
-		"#FFA500",
-		"#FF8C00",
-		"#FF7000",
-		"#FF5F1F",
-	}
-
-	// Create gradient string function
-	gradientString := func(s string) string {
-		var b strings.Builder
-		runes := []rune(s)
-		for i, r := range runes {
-			// Offset based on tick to create scrolling effect
-			// Map (i + tickOffset) to the color space
-			shiftedIdx := i - m.tickOffset
-			// Calculate properly avoiding negative modulo issues
-			// Equivalent to math.Mod or ensuring positive before %
-			colorIdx := (shiftedIdx % len(runes))
-			if colorIdx < 0 {
-				colorIdx += len(runes)
-			}
-			colorIdx = colorIdx * len(colors) / len(runes)
-			if colorIdx >= len(colors) {
-				colorIdx = len(colors) - 1
-			}
-			b.WriteString(lipgloss.NewStyle().Foreground(lipgloss.Color(colors[colorIdx])).Render(string(r)))
-		}
-		return b.String()
-	}
-
 	// Highlight logic (Moved up so we can calculate width)
 	renderInputLine := func() string {
 		if m.isExecuting {
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Render(m.textInput)
+			return lipgloss.NewStyle().Foreground(colorMuted).Render(m.textInput)
 		}
 		if m.textInput == "" {
 			hint := "Type / for commands, @ for paths..."
 			// We can also add a blinking cursor to the beginning of the hint
 			if m.tickOffset%10 < 5 { // roughly 500ms blink since tick is 100ms
-				return lipgloss.NewStyle().Reverse(true).Render(" ") + lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Render(hint[1:])
+				return lipgloss.NewStyle().Reverse(true).Render(" ") + lipgloss.NewStyle().Foreground(colorMuted).Render(hint[1:])
 			}
-			return lipgloss.NewStyle().Foreground(lipgloss.Color("#888888")).Render(hint)
+			return lipgloss.NewStyle().Foreground(colorMuted).Render(hint)
 		}
 
 		var styled strings.Builder
@@ -602,14 +521,14 @@ func (m model) renderGradientBox() string {
 				"install": true, "start": true, "stop": true, "restart": true, "logs": true, "uninstall": true, "exit": true, "setup": true,
 			}
 
-			// Highlight in Teal if it's a valid command
-			cmdStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+			// Highlight in Accent Color if it's a valid command
+			cmdStyle := lipgloss.NewStyle().Foreground(colorText)
 			if validCommands[cmdStr] {
-				cmdStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#008080")).Bold(true)
+				cmdStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
 			}
 
 			// Extra arguments are plaintext white
-			argStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#FFFFFF"))
+			argStyle := lipgloss.NewStyle().Foreground(colorText)
 
 			// Render char by char to handle cursor properly
 			for i, r := range runes {
@@ -648,57 +567,93 @@ func (m model) renderGradientBox() string {
 
 	// Make box naturally expand to match text, while min width is effectiveWidth
 	boxWidth := width
-	if contentLen + 4 > boxWidth {
-		boxWidth = contentLen + 4
+	if contentLen > boxWidth {
+		boxWidth = contentLen
 	}
 
-	leftBorderLen := 2
-	rightBorderLen := boxWidth - leftBorderLen - len(title) - 2
-	if rightBorderLen < 0 {
-		rightBorderLen = 0
-	}
+	contentStr := fmt.Sprintf("%s%s", lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(prefix), inputLine)
 
-	topBorderStr := "╭" + strings.Repeat("─", leftBorderLen) + title + strings.Repeat("─", rightBorderLen) + "╮"
-	bottomBorderStr := "╰" + strings.Repeat("─", boxWidth-2) + "╯"
+	// Apply lipgloss rounded border with consistent styling
+	boxStyle := lipgloss.NewStyle().
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(colorBorder).
+		Padding(1, 2).
+		Width(boxWidth + 4).
+		Align(lipgloss.Left)
 
-	midLeft := gradientString("│")
-	midRight := gradientString("│")
-
-	paddingLen := boxWidth - 2 - contentLen - 2
-	if paddingLen < 0 {
-		paddingLen = 0
-	}
-
-	contentStr := fmt.Sprintf(" %s%s%s ", lipgloss.NewStyle().Foreground(lipgloss.Color("#555555")).Bold(true).Render(prefix), inputLine, strings.Repeat(" ", paddingLen))
+	// Add the title inside the border if possible using border formatting
+	// Since lipgloss doesn't have a direct BorderTitle string property that works seamlessly with standard Border,
+	// we handle the title above the box or embedded if using newer lipgloss features.
+	// As we don't know the exact lipgloss version, we use basic rounded borders.
 
 	var b strings.Builder
-	b.WriteString(gradientString(topBorderStr) + "\n")
-	b.WriteString(midLeft + contentStr + midRight + "\n")
-	b.WriteString(gradientString(bottomBorderStr))
+
+	// Create a floating title effect just above the left edge of the border
+	titleStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Padding(0, 1)
+	b.WriteString("  " + titleStyle.Render(title) + "\n")
+	b.WriteString(boxStyle.Render(contentStr))
 
 	// Render dropdown options if active
 	if m.dropdownMode != "" && len(m.options) > 0 {
 		for i, opt := range m.options {
-			optStyle := lipgloss.NewStyle().Foreground(lipgloss.Color("#AAAAAA"))
-			if i == m.selectedIndex {
-				optStyle = lipgloss.NewStyle().Foreground(lipgloss.Color("#000000")).Background(lipgloss.Color("#BDB76B"))
-			}
-			// Pad to width using visual width rather than byte length
-			// Make dropdown left-aligned inside the same block space instead of screen-centered
+			optStyle := lipgloss.NewStyle().Foreground(colorMuted).Padding(0, 1)
 			optText := "  " + opt
+
+			if i == m.selectedIndex {
+				optStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Padding(0, 1)
+				optText = "▶ " + opt
+			}
+
 			optWidth := lipgloss.Width(optText)
-			if optWidth < boxWidth { // Match exact width of the input box
-				optText += strings.Repeat(" ", boxWidth-optWidth)
-			} else if optWidth > boxWidth {
+			// Pad to visual width
+			if optWidth < boxWidth+4 { // Match exact width of the input box including padding and borders
+				optText += strings.Repeat(" ", boxWidth+4-optWidth)
+			} else if optWidth > boxWidth+4 {
 				runes := []rune(optText)
-				if len(runes) > boxWidth {
-					optText = string(runes[:boxWidth])
+				if len(runes) > boxWidth+4 {
+					optText = string(runes[:boxWidth+4])
 				}
 			}
-			// Append left aligned without lipgloss.Center because the whole input view is centered in View()
+
 			b.WriteString("\n" + optStyle.Render(optText))
 		}
 	}
 
 	return b.String()
+}
+
+func getCustomTheme() *huh.Theme {
+	t := huh.ThemeBase()
+
+	// Apply custom colors
+	t.Focused.Base = t.Focused.Base.BorderForeground(colorBorder)
+	t.Focused.Title = t.Focused.Title.Foreground(colorAccent).Bold(true)
+	t.Focused.NoteTitle = t.Focused.NoteTitle.Foreground(colorAccent)
+	t.Focused.Directory = t.Focused.Directory.Foreground(colorAccent)
+	t.Focused.Description = t.Focused.Description.Foreground(colorMuted)
+	t.Focused.ErrorIndicator = t.Focused.ErrorIndicator.Foreground(lipgloss.Color("#FF0000"))
+	t.Focused.ErrorMessage = t.Focused.ErrorMessage.Foreground(lipgloss.Color("#FF0000"))
+	t.Focused.SelectSelector = t.Focused.SelectSelector.Foreground(colorAccent)
+	t.Focused.NextIndicator = t.Focused.NextIndicator.Foreground(colorAccent)
+	t.Focused.PrevIndicator = t.Focused.PrevIndicator.Foreground(colorMuted)
+	t.Focused.Option = t.Focused.Option.Foreground(colorText)
+	t.Focused.MultiSelectSelector = t.Focused.MultiSelectSelector.Foreground(colorAccent)
+	t.Focused.SelectedOption = t.Focused.SelectedOption.Foreground(colorAccent).Bold(true)
+	t.Focused.SelectedPrefix = t.Focused.SelectedPrefix.Foreground(colorAccent)
+	t.Focused.UnselectedPrefix = t.Focused.UnselectedPrefix.Foreground(colorMuted)
+	t.Focused.UnselectedOption = t.Focused.UnselectedOption.Foreground(colorText)
+	t.Focused.FocusedButton = t.Focused.FocusedButton.Foreground(colorBg).Background(colorAccent).Bold(true)
+	t.Focused.BlurredButton = t.Focused.BlurredButton.Foreground(colorText).Background(colorBorder)
+
+	t.Focused.TextInput.Cursor = t.Focused.TextInput.Cursor.Foreground(colorAccent)
+	t.Focused.TextInput.Placeholder = t.Focused.TextInput.Placeholder.Foreground(colorMuted)
+	t.Focused.TextInput.Prompt = t.Focused.TextInput.Prompt.Foreground(colorAccent)
+
+	t.Blurred = t.Focused
+	t.Blurred.Base = t.Blurred.Base.BorderStyle(lipgloss.HiddenBorder())
+	t.Blurred.Title = t.Blurred.Title.Foreground(colorMuted).Bold(false)
+	t.Blurred.TextInput.Prompt = t.Blurred.TextInput.Prompt.Foreground(colorMuted)
+	t.Blurred.TextInput.Text = t.Blurred.TextInput.Text.Foreground(colorMuted)
+
+	return t
 }

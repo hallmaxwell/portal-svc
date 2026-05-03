@@ -70,23 +70,23 @@ func runElevated(args []string) error {
 }
 
 func executeWithElevation(action string) {
-    if !hasAdminPrivileges() {
-        fmt.Println("Administrative privileges are required for this action.")
-        err := runElevated([]string{"dock", action})
-        if err != nil {
-            fmt.Printf("Elevation failed: %v\n", err)
-        } else {
-            fmt.Println("Launched elevated process successfully.")
-        }
-        return
-    }
+	if !hasAdminPrivileges() {
+		fmt.Println("Administrative privileges are required for this action.")
+		err := runElevated([]string{"dock", action})
+		if err != nil {
+			fmt.Printf("Elevation failed: %v\n", err)
+		} else {
+			fmt.Println("Launched elevated process successfully.")
+		}
+		return
+	}
 
-    // Already admin, run locally
-    runServiceCommand(action)
+	// Already admin, run locally
+	runServiceCommand(action)
 }
 
 func runServiceCommand(action string) {
-    exe, err := os.Executable()
+	exe, err := os.Executable()
 	if err != nil {
 		fmt.Printf("[ ERROR ] %v\n", err)
 		return

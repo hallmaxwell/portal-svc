@@ -95,7 +95,7 @@ func BuildSetupForm(data *SetupData) *huh.Form {
 				Title("Save these parameters to .env?").
 				Value(&data.Confirm),
 		),
-	)
+	).WithTheme(getCustomTheme())
 }
 
 func SaveSetup(data *SetupData) error {
@@ -149,7 +149,7 @@ func SaveSetup(data *SetupData) error {
 }
 
 func runSetupWizard() {
-    // Keep this for when called directly not from TUI loops
+	// Keep this for when called directly not from TUI loops
 	data := GetSetupData()
 	form := BuildSetupForm(data)
 	if err := form.Run(); err != nil {
