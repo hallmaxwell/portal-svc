@@ -5,6 +5,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"runtime"
 	"strings"
 	"sync"
 	"testing"
@@ -181,6 +182,46 @@ func TestSingBoxLogWriter(t *testing.T) {
 				}
 			}
 		})
+	}
+}
+
+func TestDockProgram_Cleanup(t *testing.T) {
+	// Test file deletion
+	tempFile, err := os.CreateTemp("", "dock_test_cleanup_*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	outPath := tempFile.Name()
+	tempFile.Close() // Close immediately as per best practices
+
+	p := &dockProgram{outPath: outPath}
+	p.cleanup()
+
+	// Verify file is deleted
+	if _, err := os.Stat(outPath); !os.IsNotExist(err) {
+		t.Errorf("Expected file %s to be deleted, but it still exists or error: %v", outPath, err)
+	}
+
+	// Test process killing
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("timeout", "/T", "10")
+	} else {
+		cmd = exec.Command("sleep", "10")
+	}
+
+	err = cmd.Start()
+	if err != nil {
+		t.Fatalf("Failed to start dummy process: %v", err)
+	}
+
+	p2 := &dockProgram{cmd: cmd}
+	p2.cleanup()
+
+	// Wait for process to exit and verify it was killed
+	err = cmd.Wait()
+	if err == nil {
+		t.Errorf("Expected process to be killed, but it exited normally")
 	}
 }
 
