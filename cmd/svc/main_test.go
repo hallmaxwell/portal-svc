@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"os/exec"
 	"path/filepath"
 	"strings"
 	"sync"
@@ -302,4 +303,43 @@ func TestBoundedLogWriter_Concurrency(t *testing.T) {
 	if len(lines) != 100 {
 		t.Errorf("Expected 100 lines, got %d", len(lines))
 	}
+}
+
+func TestDockProgram_Cleanup(t *testing.T) {
+	// Create a temporary file to act as the outPath
+	tempFile, err := os.CreateTemp(t.TempDir(), "test_cleanup_*.json")
+	if err != nil {
+		t.Fatalf("Failed to create temp file: %v", err)
+	}
+	outPath := tempFile.Name()
+	tempFile.Close() // Close it so it can be deleted
+
+	// Verify the file exists initially
+	if _, err := os.Stat(outPath); os.IsNotExist(err) {
+		t.Fatalf("Expected temp file to exist, but it doesn't: %s", outPath)
+	}
+
+	// Create dockProgram instance with the temp file as outPath
+	p := &dockProgram{
+		outPath: outPath,
+	}
+
+	// Case 1: p.cmd is nil. cleanup() should handle it without panicking
+	// and should remove the file.
+	p.cleanup()
+
+	// Verify the file was deleted
+	if _, err := os.Stat(outPath); !os.IsNotExist(err) {
+		t.Errorf("Expected temp file to be deleted by cleanup(), but it still exists: %s", outPath)
+	}
+
+}
+
+func TestDockProgram_Cleanup_ProcessNotNil(t *testing.T) {
+	// Case 2: p.cmd is not nil, but p.cmd.Process is nil
+	p2 := &dockProgram{
+		cmd: &exec.Cmd{},
+	}
+	// This should not panic
+	p2.cleanup()
 }
