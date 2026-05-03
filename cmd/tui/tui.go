@@ -14,11 +14,11 @@ import (
 )
 
 var (
-	colorAccent = lipgloss.Color("#00D2FF")
-	colorText   = lipgloss.Color("#E0E0E0")
-	colorMuted  = lipgloss.Color("#737373")
-	colorBorder = lipgloss.Color("#404040")
-	colorBg     = lipgloss.Color("#1A1A1A") // Optional dark background
+	colorAccent = DefaultTheme.Accent
+	colorText = DefaultTheme.TextPrimary
+	colorMuted = DefaultTheme.TextMuted
+	colorBorder = DefaultTheme.BorderMuted
+	colorBg = DefaultTheme.Bg // Optional dark background
 )
 
 type model struct {
@@ -53,30 +53,97 @@ type model struct {
 func initialModel() model {
 	paletteValue := new(string)
 
-	// Generate clean ANSI Shadow block style banner
+	// Generate 8-bit style banner with shadows mimicking Gemini CLI
 	bannerRaw := `
-██████╗  ██████╗ ██████╗ ████████╗ █████╗ ██╗
+██████╗ ██████╗ ██████╗ ████████╗ █████╗ ██╗
 ██╔══██╗██╔═══██╗██╔══██╗╚══██╔══╝██╔══██╗██║
 ██████╔╝██║   ██║██████╔╝   ██║   ███████║██║
 ██╔═══╝ ██║   ██║██╔══██╗   ██║   ██╔══██║██║
 ██║     ╚██████╔╝██║  ██║   ██║   ██║  ██║███████╗
 ╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚══════╝
 `
+
+	// Convert the standard 3D block text to 8-bit block with shadow format.
+	// Since creating manual ASCII takes time, we simulate the effect by replacing characters
+	// and appending a shadow layer using ▒
+	var layeredLines []string
 	bannerRaw = strings.ReplaceAll(bannerRaw, "\r", "")
 	rawLines := strings.Split(strings.Trim(bannerRaw, "\n"), "\n")
 
-	var bannerLines []string
-	fgStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
+	// Pre-process raw lines into thick blocks for foreground
 	for _, line := range rawLines {
-		if strings.TrimSpace(line) != "" {
-			bannerLines = append(bannerLines, fgStyle.Render(line))
-		}
+		line = strings.ReplaceAll(line, "╔", "█")
+		line = strings.ReplaceAll(line, "╗", "█")
+		line = strings.ReplaceAll(line, "╚", "█")
+		line = strings.ReplaceAll(line, "╝", "█")
+		line = strings.ReplaceAll(line, "═", "█")
+		line = strings.ReplaceAll(line, "║", "█")
+		layeredLines = append(layeredLines, line)
 	}
+
+	// Create shadow offset by 1 char down, 2 chars right
+	var finalLines []string
+	for i := 0; i < len(layeredLines); i++ {
+		fgRunes := []rune(layeredLines[i])
+
+		shadowStr := ""
+		if i > 0 {
+			shadowStr = "  " + layeredLines[i-1] // Shift right 2 for clearer shadow
+		} else {
+			shadowStr = strings.Repeat(" ", len(fgRunes)+2)
+		}
+		shRunes := []rune(shadowStr)
+
+		var out strings.Builder
+		maxLen := len(fgRunes)
+		if len(shRunes) > maxLen {
+			maxLen = len(shRunes)
+		}
+
+		for j := 0; j < maxLen; j++ {
+			f := ' '
+			s := ' '
+			if j < len(fgRunes) {
+				f = fgRunes[j]
+			}
+			if j < len(shRunes) {
+				s = shRunes[j]
+			}
+
+			if f == '█' {
+				out.WriteRune('█')
+			} else if s == '█' {
+				out.WriteRune('▒')
+			} else {
+				out.WriteRune(' ')
+			}
+		}
+		finalLines = append(finalLines, out.String())
+	}
+
+	// Ensure gradient applies ONLY to '█' and '▒' is muted.
+	// Since lipgloss and our gradientRender works on raw strings, we use the custom gradientRender
+	// gradientRender handles string inputs. We'll pass finalLines.
+
+	var bannerLines []string
+	gradLines, err := gradientRender(finalLines, HexColor("#00D2FF"), HexColor("#9D50BB"))
+	if err != nil {
+		// Fallback
+
+		for _, line := range finalLines {
+			if strings.TrimSpace(line) != "" {
+				bannerLines = append(bannerLines, line)
+			}
+		}
+	} else {
+		bannerLines = gradLines
+	}
+
 
 	return model{
 		paletteValue:   paletteValue,
 		bannerLines:    bannerLines,
-		effectiveWidth: 60,
+		effectiveWidth: 80,
 	}
 }
 
@@ -316,8 +383,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		m.height = msg.Height
 
 		// Update form theme width if terminal is too small
-		m.effectiveWidth = 60
-		if m.width > 0 && m.width < 62 {
+		m.effectiveWidth = 80 // increased default width for Gemini style layout
+		if m.width > 0 && m.width < 82 {
 			m.effectiveWidth = m.width - 2
 			if m.effectiveWidth < 10 {
 				m.effectiveWidth = 10
@@ -573,12 +640,19 @@ func (m model) renderGradientBox() string {
 
 	contentStr := fmt.Sprintf("%s%s", lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(prefix), inputLine)
 
+	// Dynamic border styling based on state
+	currentBorderColor := colorBorder
+	if !m.isExecuting {
+		// When focused/ready for input, light up the border
+		currentBorderColor = colorAccent
+	}
+
 	// Apply lipgloss rounded border with consistent styling
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
-		BorderForeground(colorBorder).
-		Padding(1, 2).
-		Width(boxWidth + 4).
+		BorderForeground(currentBorderColor).
+		Padding(1, 4). // increased horizontal padding for more breathing room
+		Width(boxWidth + 8). // updated to account for horizontal padding * 2
 		Align(lipgloss.Left)
 
 	// Add the title inside the border if possible using border formatting
@@ -606,12 +680,12 @@ func (m model) renderGradientBox() string {
 
 			optWidth := lipgloss.Width(optText)
 			// Pad to visual width
-			if optWidth < boxWidth+4 { // Match exact width of the input box including padding and borders
-				optText += strings.Repeat(" ", boxWidth+4-optWidth)
-			} else if optWidth > boxWidth+4 {
+			if optWidth < boxWidth+8 { // Match exact width of the input box including padding and borders
+				optText += strings.Repeat(" ", boxWidth+8-optWidth)
+			} else if optWidth > boxWidth+8 {
 				runes := []rune(optText)
-				if len(runes) > boxWidth+4 {
-					optText = string(runes[:boxWidth+4])
+				if len(runes) > boxWidth+8 {
+					optText = string(runes[:boxWidth+8])
 				}
 			}
 
