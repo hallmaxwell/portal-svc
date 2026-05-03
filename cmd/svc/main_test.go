@@ -346,7 +346,7 @@ func TestBoundedLogWriter_Concurrency(t *testing.T) {
 	}
 }
 
-func TestDockProgram_Cleanup(t *testing.T) {
+func TestDockProgram_Cleanup_NoCmd(t *testing.T) {
 	// Create a temporary file to act as the outPath
 	tempFile, err := os.CreateTemp(t.TempDir(), "test_cleanup_*.json")
 	if err != nil {
