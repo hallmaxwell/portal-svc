@@ -2,23 +2,18 @@ package tui
 
 import (
 	"fmt"
+	"io"
 	"os"
 	"os/exec"
 	"path/filepath"
 	"strings"
 	"time"
 
+	"github.com/charmbracelet/bubbles/list"
+	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
 	"github.com/charmbracelet/huh"
 	"github.com/charmbracelet/lipgloss"
-)
-
-var (
-	colorAccent = DefaultTheme.Accent
-	colorText = DefaultTheme.TextPrimary
-	colorMuted = DefaultTheme.TextMuted
-	colorBorder = DefaultTheme.BorderMuted
-	colorBg = DefaultTheme.Bg // Optional dark background
 )
 
 type model struct {
@@ -33,11 +28,9 @@ type model struct {
 	singboxStatus string
 
 	// State for text input and dropdown
-	textInput     string
-	cursorIndex   int
-	dropdownMode  string // "", "command", "path"
-	options       []string
-	selectedIndex int
+	ti           textinput.Model
+	dropdownMode string // "", "command", "path"
+	optionsList  list.Model
 
 	// State for nested forms
 	childForm     *huh.Form
@@ -50,99 +43,72 @@ type model struct {
 	activeCmd     *exec.Cmd
 }
 
+type item string
+
+func (i item) FilterValue() string { return string(i) }
+
+type customItemDelegate struct {
+	effectiveWidth int
+}
+
+func (d customItemDelegate) Height() int                             { return 1 }
+func (d customItemDelegate) Spacing() int                            { return 0 }
+func (d customItemDelegate) Update(_ tea.Msg, _ *list.Model) tea.Cmd { return nil }
+func (d customItemDelegate) Render(w io.Writer, m list.Model, index int, listItem list.Item) {
+	i, ok := listItem.(item)
+	if !ok {
+		return
+	}
+
+	str := string(i)
+
+	fn := lipgloss.NewStyle().Padding(0, 1).Foreground(AppTheme.SecondaryText).Render
+	if index == m.Index() {
+		fn = func(s ...string) string {
+			content := strings.Join(s, " ")
+			paddingLen := d.effectiveWidth - lipgloss.Width(content) - 4 // border + padding compensation
+			if paddingLen < 0 { paddingLen = 0 }
+
+			paddedContent := content + strings.Repeat(" ", paddingLen)
+
+			return lipgloss.NewStyle().
+				Padding(0, 1).
+				Border(lipgloss.NormalBorder(), false, false, false, true).
+				BorderForeground(AppTheme.PrimaryColor).
+				Background(AppTheme.HighlightColor).
+				Foreground(AppTheme.PrimaryColor).
+				Bold(true).
+				Render(paddedContent)
+		}
+	}
+
+	fmt.Fprint(w, fn(str))
+}
+
+
 func initialModel() model {
 	paletteValue := new(string)
 
-	// Generate 8-bit style banner with shadows mimicking Gemini CLI
-	bannerRaw := `
-██████╗ ██████╗ ██████╗ ████████╗ █████╗ ██╗
-██╔══██╗██╔═══██╗██╔══██╗╚══██╔══╝██╔══██╗██║
-██████╔╝██║   ██║██████╔╝   ██║   ███████║██║
-██╔═══╝ ██║   ██║██╔══██╗   ██║   ██╔══██║██║
-██║     ╚██████╔╝██║  ██║   ██║   ██║  ██║███████╗
-╚═╝      ╚═════╝ ╚═╝  ╚═╝   ╚═╝   ╚═╝  ╚═╝╚══════╝
-`
+	ti := textinput.New()
+	ti.Placeholder = "Type / for commands, @ for paths..."
+	ti.Focus()
+	ti.Prompt = "> "
+	ti.PromptStyle = lipgloss.NewStyle().Foreground(AppTheme.PrimaryColor).Bold(true)
+	ti.Cursor.Style = lipgloss.NewStyle().Foreground(AppTheme.PrimaryColor)
+	ti.Cursor.Blink = true
 
-	// Convert the standard 3D block text to 8-bit block with shadow format.
-	// Since creating manual ASCII takes time, we simulate the effect by replacing characters
-	// and appending a shadow layer using ▒
-	var layeredLines []string
-	bannerRaw = strings.ReplaceAll(bannerRaw, "\r", "")
-	rawLines := strings.Split(strings.Trim(bannerRaw, "\n"), "\n")
-
-	// Pre-process raw lines into thick blocks for foreground
-	for _, line := range rawLines {
-		line = strings.ReplaceAll(line, "╔", "█")
-		line = strings.ReplaceAll(line, "╗", "█")
-		line = strings.ReplaceAll(line, "╚", "█")
-		line = strings.ReplaceAll(line, "╝", "█")
-		line = strings.ReplaceAll(line, "═", "█")
-		line = strings.ReplaceAll(line, "║", "█")
-		layeredLines = append(layeredLines, line)
-	}
-
-	// Create shadow offset by 1 char down, 2 chars right
-	var finalLines []string
-	for i := 0; i < len(layeredLines); i++ {
-		fgRunes := []rune(layeredLines[i])
-
-		shadowStr := ""
-		if i > 0 {
-			shadowStr = "  " + layeredLines[i-1] // Shift right 2 for clearer shadow
-		} else {
-			shadowStr = strings.Repeat(" ", len(fgRunes)+2)
-		}
-		shRunes := []rune(shadowStr)
-
-		var out strings.Builder
-		maxLen := len(fgRunes)
-		if len(shRunes) > maxLen {
-			maxLen = len(shRunes)
-		}
-
-		for j := 0; j < maxLen; j++ {
-			f := ' '
-			s := ' '
-			if j < len(fgRunes) {
-				f = fgRunes[j]
-			}
-			if j < len(shRunes) {
-				s = shRunes[j]
-			}
-
-			if f == '█' {
-				out.WriteRune('█')
-			} else if s == '█' {
-				out.WriteRune('▒')
-			} else {
-				out.WriteRune(' ')
-			}
-		}
-		finalLines = append(finalLines, out.String())
-	}
-
-	// Ensure gradient applies ONLY to '█' and '▒' is muted.
-	// Since lipgloss and our gradientRender works on raw strings, we use the custom gradientRender
-	// gradientRender handles string inputs. We'll pass finalLines.
-
-	var bannerLines []string
-	gradLines, err := gradientRender(finalLines, HexColor("#00D2FF"), HexColor("#9D50BB"))
-	if err != nil {
-		// Fallback
-
-		for _, line := range finalLines {
-			if strings.TrimSpace(line) != "" {
-				bannerLines = append(bannerLines, line)
-			}
-		}
-	} else {
-		bannerLines = gradLines
-	}
-
+	delegate := customItemDelegate{effectiveWidth: 80}
+	l := list.New([]list.Item{}, delegate, 80, 10)
+	l.SetShowTitle(false)
+	l.SetShowStatusBar(false)
+	l.SetShowHelp(false)
+	l.SetShowFilter(false)
+	l.Styles.NoItems = lipgloss.NewStyle().Margin(0).Padding(0)
 
 	return model{
 		paletteValue:   paletteValue,
-		bannerLines:    bannerLines,
+		ti:             ti,
+		optionsList:    l,
 		effectiveWidth: 80,
 	}
 }
@@ -159,7 +125,7 @@ func checkSingBox() tea.Cmd {
 type singBoxStatusMsg string
 
 func (m model) Init() tea.Cmd {
-	return tea.Batch(tick(), checkSingBox())
+	return tea.Batch(tick(), checkSingBox(), textinput.Blink)
 }
 
 type logLineMsg string
@@ -206,7 +172,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 	switch msg := msg.(type) {
 	case tea.KeyMsg:
-		if msg.Type == tea.KeyCtrlC || msg.Type == tea.KeyEsc {
+		if msg.Type == tea.KeyCtrlC {
+			return m, tea.Quit
+		}
+
+		// If a dropdown or something is open, escape can close it
+		if msg.Type == tea.KeyEsc {
+			if m.dropdownMode != "" {
+				m.dropdownMode = ""
+				m.optionsList.SetItems([]list.Item{})
+				return m, nil
+			}
 			return m, tea.Quit
 		}
 
@@ -231,71 +207,48 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		// Handle text input and dropdown logic
 		if m.dropdownMode != "" {
 			switch msg.Type {
-			case tea.KeyUp:
-				m.selectedIndex--
-				if m.selectedIndex < 0 {
-					m.selectedIndex = len(m.options) - 1
-				}
-				return m, nil
-			case tea.KeyDown:
-				m.selectedIndex++
-				if m.selectedIndex >= len(m.options) {
-					m.selectedIndex = 0
-				}
-				return m, nil
+			case tea.KeyUp, tea.KeyDown:
+				var listCmd tea.Cmd
+				m.optionsList, listCmd = m.optionsList.Update(msg)
+				return m, listCmd
 			case tea.KeyRight, tea.KeyEnter:
-				if len(m.options) > 0 {
+				selectedItem := m.optionsList.SelectedItem()
+				if selectedItem != nil {
+					selStr := string(selectedItem.(item))
+
 					// Replace trigger and text with selection
-					parts := strings.SplitN(m.textInput, m.dropdownMode, 2)
+					val := m.ti.Value()
+					parts := strings.SplitN(val, m.dropdownMode, 2)
 					if len(parts) > 0 {
-						m.textInput = parts[0] + m.options[m.selectedIndex] + " "
+						m.ti.SetValue(parts[0] + selStr + " ")
 					} else {
-						m.textInput = m.options[m.selectedIndex] + " "
+						m.ti.SetValue(selStr + " ")
 					}
-					m.cursorIndex = len([]rune(m.textInput))
+					m.ti.SetCursor(len([]rune(m.ti.Value())))
 				}
 				m.dropdownMode = ""
-				m.options = nil
 				return m, nil
 			case tea.KeyBackspace, tea.KeyDelete:
 				// Fall through to default text editing, but re-evaluate dropdown mode
 				m.dropdownMode = ""
-				m.options = nil
 			case tea.KeyRunes:
 				if msg.String() == " " {
 					m.dropdownMode = ""
-					m.options = nil
 				}
 			}
 		}
 
 		switch msg.Type {
-		case tea.KeyBackspace, tea.KeyDelete:
-			if len(m.textInput) > 0 && m.cursorIndex > 0 {
-				runes := []rune(m.textInput)
-				m.textInput = string(runes[:m.cursorIndex-1]) + string(runes[m.cursorIndex:])
-				m.cursorIndex--
-			}
-		case tea.KeyLeft:
-			if m.cursorIndex > 0 {
-				m.cursorIndex--
-			}
-		case tea.KeyRight:
-			if m.cursorIndex < len([]rune(m.textInput)) {
-				m.cursorIndex++
-			}
 		case tea.KeyRunes, tea.KeySpace:
 			s := msg.String()
-			runes := []rune(m.textInput)
-			m.textInput = string(runes[:m.cursorIndex]) + s + string(runes[m.cursorIndex:])
-			m.cursorIndex += len([]rune(s))
-
 			if s == "/" {
 				m.dropdownMode = "/"
-				m.options = []string{
-					"install", "start", "stop", "restart", "logs", "uninstall", "exit", "setup",
+				items := []list.Item{
+					item("install"), item("start"), item("stop"), item("restart"),
+					item("logs"), item("uninstall"), item("exit"), item("setup"),
 				}
-				m.selectedIndex = 0
+				m.optionsList.SetItems(items)
+				m.optionsList.ResetSelected()
 			} else if s == "@" {
 				m.dropdownMode = "@"
 
@@ -307,27 +260,26 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 					baseDir = cwd
 				}
 
-				var fileOpts []string
+				var items []list.Item
 				files, _ := os.ReadDir(baseDir)
 				for _, f := range files {
 					if !f.IsDir() {
-						fileOpts = append(fileOpts, f.Name())
+						items = append(items, item(f.Name()))
 					}
 				}
-				m.options = fileOpts
-				m.selectedIndex = 0
+				m.optionsList.SetItems(items)
+				m.optionsList.ResetSelected()
 			}
 		case tea.KeyEnter:
 			if m.dropdownMode != "" {
 				// Handled above
 				break
 			}
-			inputString := strings.TrimSpace(m.textInput)
+			inputString := strings.TrimSpace(m.ti.Value())
 			*m.paletteValue = inputString
 			fields := strings.Fields(inputString)
 			if len(fields) == 0 {
-				m.textInput = ""
-				m.cursorIndex = 0
+				m.ti.SetValue("")
 				*m.paletteValue = ""
 				return m, nil
 			}
@@ -344,6 +296,7 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 			m.isExecuting = true
 			m.commandOutput = nil
+			m.ti.Blur() // Visually disable
 
 			var formCmd tea.Cmd
 			if action == "setup" {
@@ -361,14 +314,17 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			} else {
 				m.commandOutput = []string{fmt.Sprintf("[ ERROR ] Action %s not fully implemented yet.", action)}
 				m.isExecuting = false
-				m.textInput = ""
-				m.cursorIndex = 0
+				m.ti.SetValue("")
+				m.ti.Focus()
 				*m.paletteValue = ""
 				return m, nil
 			}
 		}
 
-		return m, nil
+		// Update text input model
+		var tiCmd tea.Cmd
+		m.ti, tiCmd = m.ti.Update(msg)
+		return m, tiCmd
 
 	case singBoxStatusMsg:
 		m.singboxStatus = string(msg)
@@ -391,11 +347,16 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 		}
 
+		// Update list delegate width
+		delegate := customItemDelegate{effectiveWidth: m.effectiveWidth}
+		m.optionsList.SetDelegate(delegate)
+		m.optionsList.SetWidth(m.effectiveWidth)
+
 	case logLineMsg:
 		m.commandOutput = strings.Split(string(msg), "\n")
 		m.isExecuting = false
-		m.textInput = ""
-		m.cursorIndex = 0
+		m.ti.SetValue("")
+		m.ti.Focus()
 		*m.paletteValue = ""
 		return m, nil
 
@@ -422,8 +383,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 
 		m.isExecuting = false
-		m.textInput = ""
-		m.cursorIndex = 0
+		m.ti.SetValue("")
+		m.ti.Focus()
 		*m.paletteValue = ""
 		return m, nil
 
@@ -462,8 +423,8 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		}
 		m.childForm = nil
 		m.isExecuting = false
-		m.textInput = ""
-		m.cursorIndex = 0
+		m.ti.SetValue("")
+		m.ti.Focus()
 		*m.paletteValue = ""
 		return m, nil
 	}
@@ -472,60 +433,83 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	var s strings.Builder
+	// Create a modern, refined header with Typography
+	headerText := lipgloss.NewStyle().
+		Bold(true).
+		Foreground(AppTheme.PrimaryColor).
+		Render("Portal Service Manager")
 
-	// Add breathing room above banner
-	s.WriteString("\n\n")
+	headerDesc := lipgloss.NewStyle().
+		Foreground(AppTheme.SecondaryText).
+		Render("Silky-smooth proxy experience")
 
-	// Render persistent banner
-	for _, line := range m.bannerLines {
-		s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, line))
-		s.WriteString("\n")
-	}
-	// Reduce breathing room between banner and input box
-	s.WriteString("\n")
+	headerContent := lipgloss.JoinVertical(lipgloss.Center, headerText, headerDesc)
 
-	// Render input box with gradient border
-	inputView := m.renderGradientBox()
+	headerView := lipgloss.NewStyle().
+		Border(lipgloss.NormalBorder(), false, false, true, false).
+		BorderForeground(AppTheme.BorderMuted).
+		MarginBottom(2).
+		PaddingBottom(1).
+		Width(m.effectiveWidth).
+		Align(lipgloss.Center).
+		Render(headerContent)
 
-	// Center the input block horizontally
-	s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, inputView))
-	s.WriteString("\n\n")
+	// Command Palette
+	inputView := lipgloss.NewStyle().
+		Width(m.effectiveWidth).
+		Align(lipgloss.Center).
+		Render(m.renderGradientBox())
 
-	// Render Child Form
+	// Dynamic Content (Forms or Command Outputs)
+	var dynamicView string
 	if m.childForm != nil {
 		formView := m.childForm.View()
-		// Huh forms often output with trailing spaces/newlines, we can center the entire block
-		s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, lipgloss.NewStyle().Width(m.effectiveWidth).Render(formView)))
-		s.WriteString("\n")
+		dynamicView = lipgloss.NewStyle().
+			Width(m.effectiveWidth).
+			Align(lipgloss.Center).
+			MarginTop(1).
+			Render(formView)
 	} else if len(m.commandOutput) > 0 {
-		outStyle := lipgloss.NewStyle().Foreground(colorMuted)
 		displayLines := m.commandOutput
 		if len(displayLines) > 20 {
 			displayLines = displayLines[len(displayLines)-20:]
 		}
-		for _, line := range displayLines {
-			s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, outStyle.Render(line)))
-			s.WriteString("\n")
-		}
+		outText := strings.Join(displayLines, "\n")
+		dynamicView = lipgloss.NewStyle().
+			Foreground(AppTheme.SecondaryText).
+			Width(m.effectiveWidth).
+			Align(lipgloss.Center).
+			MarginTop(1).
+			Render(outText)
 	}
 
-	// Render footer with version and system checks
-	s.WriteString("\n\n")
-	footerStyle := lipgloss.NewStyle().Foreground(colorMuted)
+	// Footer
 	versionText := "Portal TUI v1.0.0"
-
 	statusText := m.singboxStatus
 	if statusText == "" {
 		statusText = "Checking..."
 	}
 	systemCheck := fmt.Sprintf(" | sing-box: %s", statusText)
-	footer := versionText + systemCheck
 
-	s.WriteString(lipgloss.PlaceHorizontal(m.width, lipgloss.Center, footerStyle.Render(footer)))
-	s.WriteString("\n")
+	footerContent := lipgloss.JoinHorizontal(lipgloss.Center, versionText, systemCheck)
+	footerView := lipgloss.NewStyle().
+		Foreground(AppTheme.SecondaryText).
+		MarginTop(2).
+		Width(m.effectiveWidth).
+		Align(lipgloss.Center).
+		Render(footerContent)
 
-	return s.String()
+	// Combine all blocks cleanly with JoinVertical
+	blocks := []string{headerView, inputView}
+	if dynamicView != "" {
+		blocks = append(blocks, dynamicView)
+	}
+	blocks = append(blocks, footerView)
+
+	mainContent := lipgloss.JoinVertical(lipgloss.Center, blocks...)
+
+	// Center everything vertically and horizontally in the viewport
+	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, mainContent)
 }
 
 func RunTUI() {
@@ -561,136 +545,34 @@ func RunTUI() {
 
 func (m model) renderGradientBox() string {
 	width := m.effectiveWidth
-	title := " Command Palette "
 
-	// Highlight logic (Moved up so we can calculate width)
-	renderInputLine := func() string {
-		if m.isExecuting {
-			return lipgloss.NewStyle().Foreground(colorMuted).Render(m.textInput)
-		}
-		if m.textInput == "" {
-			hint := "Type / for commands, @ for paths..."
-			// We can also add a blinking cursor to the beginning of the hint
-			if m.tickOffset%10 < 5 { // roughly 500ms blink since tick is 100ms
-				return lipgloss.NewStyle().Reverse(true).Render(" ") + lipgloss.NewStyle().Foreground(colorMuted).Render(hint[1:])
-			}
-			return lipgloss.NewStyle().Foreground(colorMuted).Render(hint)
-		}
-
-		var styled strings.Builder
-		runes := []rune(m.textInput)
-
-		// Tokenize basic highlighting
-		words := strings.Fields(m.textInput)
-		if len(words) > 0 {
-			cmdStr := words[0]
-			validCommands := map[string]bool{
-				"install": true, "start": true, "stop": true, "restart": true, "logs": true, "uninstall": true, "exit": true, "setup": true,
-			}
-
-			// Highlight in Accent Color if it's a valid command
-			cmdStyle := lipgloss.NewStyle().Foreground(colorText)
-			if validCommands[cmdStr] {
-				cmdStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true)
-			}
-
-			// Extra arguments are plaintext white
-			argStyle := lipgloss.NewStyle().Foreground(colorText)
-
-			// Render char by char to handle cursor properly
-			for i, r := range runes {
-				style := argStyle
-
-				if i < len([]rune(cmdStr)) {
-					style = cmdStyle
-				}
-
-				// Invert for cursor with blink
-				if i == m.cursorIndex && m.tickOffset%10 < 5 {
-					style = style.Reverse(true)
-				}
-
-				styled.WriteString(style.Render(string(r)))
-			}
-
-			if m.cursorIndex == len(runes) && m.tickOffset%10 < 5 {
-				styled.WriteString(lipgloss.NewStyle().Reverse(true).Render(" "))
-			}
-
-			return styled.String()
-		}
-
-		return m.textInput
+	currentBorderColor := AppTheme.BorderMuted
+	if m.ti.Focused() {
+		currentBorderColor = AppTheme.PrimaryColor
 	}
 
-	inputLine := renderInputLine()
-	prefix := "> "
-
-	stripAnsi := func(str string) int {
-		return lipgloss.Width(str)
-	}
-
-	contentLen := stripAnsi(prefix) + stripAnsi(inputLine)
-
-	// Make box naturally expand to match text, while min width is effectiveWidth
-	boxWidth := width
-	if contentLen > boxWidth {
-		boxWidth = contentLen
-	}
-
-	contentStr := fmt.Sprintf("%s%s", lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Render(prefix), inputLine)
-
-	// Dynamic border styling based on state
-	currentBorderColor := colorBorder
-	if !m.isExecuting {
-		// When focused/ready for input, light up the border
-		currentBorderColor = colorAccent
-	}
-
-	// Apply lipgloss rounded border with consistent styling
 	boxStyle := lipgloss.NewStyle().
 		Border(lipgloss.RoundedBorder()).
 		BorderForeground(currentBorderColor).
-		Padding(1, 4). // increased horizontal padding for more breathing room
-		Width(boxWidth + 8). // updated to account for horizontal padding * 2
+		Padding(1, 2).
+		Width(width).
 		Align(lipgloss.Left)
-
-	// Add the title inside the border if possible using border formatting
-	// Since lipgloss doesn't have a direct BorderTitle string property that works seamlessly with standard Border,
-	// we handle the title above the box or embedded if using newer lipgloss features.
-	// As we don't know the exact lipgloss version, we use basic rounded borders.
 
 	var b strings.Builder
 
-	// Create a floating title effect just above the left edge of the border
-	titleStyle := lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Padding(0, 1)
-	b.WriteString("  " + titleStyle.Render(title) + "\n")
-	b.WriteString(boxStyle.Render(contentStr))
+	b.WriteString(boxStyle.Render(m.ti.View()))
 
 	// Render dropdown options if active
-	if m.dropdownMode != "" && len(m.options) > 0 {
-		for i, opt := range m.options {
-			optStyle := lipgloss.NewStyle().Foreground(colorMuted).Padding(0, 1)
-			optText := "  " + opt
-
-			if i == m.selectedIndex {
-				optStyle = lipgloss.NewStyle().Foreground(colorAccent).Bold(true).Padding(0, 1)
-				optText = "▶ " + opt
-			}
-
-			optWidth := lipgloss.Width(optText)
-			// Pad to visual width
-			if optWidth < boxWidth+8 { // Match exact width of the input box including padding and borders
-				optText += strings.Repeat(" ", boxWidth+8-optWidth)
-			} else if optWidth > boxWidth+8 {
-				runes := []rune(optText)
-				if len(runes) > boxWidth+8 {
-					optText = string(runes[:boxWidth+8])
-				}
-			}
-
-			b.WriteString("\n" + optStyle.Render(optText))
+	if m.dropdownMode != "" && len(m.optionsList.Items()) > 0 {
+		// Calculate the height needed to adjust the list dynamically
+		numItems := len(m.optionsList.Items())
+		if numItems > 10 {
+			numItems = 10
 		}
+		m.optionsList.SetHeight(numItems)
+
+		b.WriteString("\n")
+		b.WriteString(m.optionsList.View())
 	}
 
 	return b.String()
@@ -699,35 +581,35 @@ func (m model) renderGradientBox() string {
 func getCustomTheme() *huh.Theme {
 	t := huh.ThemeBase()
 
-	// Apply custom colors
-	t.Focused.Base = t.Focused.Base.BorderForeground(colorBorder)
-	t.Focused.Title = t.Focused.Title.Foreground(colorAccent).Bold(true)
-	t.Focused.NoteTitle = t.Focused.NoteTitle.Foreground(colorAccent)
-	t.Focused.Directory = t.Focused.Directory.Foreground(colorAccent)
-	t.Focused.Description = t.Focused.Description.Foreground(colorMuted)
-	t.Focused.ErrorIndicator = t.Focused.ErrorIndicator.Foreground(lipgloss.Color("#FF0000"))
-	t.Focused.ErrorMessage = t.Focused.ErrorMessage.Foreground(lipgloss.Color("#FF0000"))
-	t.Focused.SelectSelector = t.Focused.SelectSelector.Foreground(colorAccent)
-	t.Focused.NextIndicator = t.Focused.NextIndicator.Foreground(colorAccent)
-	t.Focused.PrevIndicator = t.Focused.PrevIndicator.Foreground(colorMuted)
-	t.Focused.Option = t.Focused.Option.Foreground(colorText)
-	t.Focused.MultiSelectSelector = t.Focused.MultiSelectSelector.Foreground(colorAccent)
-	t.Focused.SelectedOption = t.Focused.SelectedOption.Foreground(colorAccent).Bold(true)
-	t.Focused.SelectedPrefix = t.Focused.SelectedPrefix.Foreground(colorAccent)
-	t.Focused.UnselectedPrefix = t.Focused.UnselectedPrefix.Foreground(colorMuted)
-	t.Focused.UnselectedOption = t.Focused.UnselectedOption.Foreground(colorText)
-	t.Focused.FocusedButton = t.Focused.FocusedButton.Foreground(colorBg).Background(colorAccent).Bold(true)
-	t.Focused.BlurredButton = t.Focused.BlurredButton.Foreground(colorText).Background(colorBorder)
+	// Apply custom colors using AppTheme
+	t.Focused.Base = t.Focused.Base.BorderForeground(AppTheme.BorderMuted)
+	t.Focused.Title = t.Focused.Title.Foreground(AppTheme.PrimaryColor).Bold(true)
+	t.Focused.NoteTitle = t.Focused.NoteTitle.Foreground(AppTheme.PrimaryColor)
+	t.Focused.Directory = t.Focused.Directory.Foreground(AppTheme.PrimaryColor)
+	t.Focused.Description = t.Focused.Description.Foreground(AppTheme.SecondaryText)
+	t.Focused.ErrorIndicator = t.Focused.ErrorIndicator.Foreground(AppTheme.ErrorColor)
+	t.Focused.ErrorMessage = t.Focused.ErrorMessage.Foreground(AppTheme.ErrorColor)
+	t.Focused.SelectSelector = t.Focused.SelectSelector.Foreground(AppTheme.PrimaryColor)
+	t.Focused.NextIndicator = t.Focused.NextIndicator.Foreground(AppTheme.PrimaryColor)
+	t.Focused.PrevIndicator = t.Focused.PrevIndicator.Foreground(AppTheme.SecondaryText)
+	t.Focused.Option = t.Focused.Option.Foreground(AppTheme.SecondaryText)
+	t.Focused.MultiSelectSelector = t.Focused.MultiSelectSelector.Foreground(AppTheme.PrimaryColor)
+	t.Focused.SelectedOption = t.Focused.SelectedOption.Foreground(AppTheme.PrimaryColor).Bold(true)
+	t.Focused.SelectedPrefix = t.Focused.SelectedPrefix.Foreground(AppTheme.PrimaryColor)
+	t.Focused.UnselectedPrefix = t.Focused.UnselectedPrefix.Foreground(AppTheme.SecondaryText)
+	t.Focused.UnselectedOption = t.Focused.UnselectedOption.Foreground(AppTheme.SecondaryText)
+	t.Focused.FocusedButton = t.Focused.FocusedButton.Foreground(AppTheme.Bg).Background(AppTheme.PrimaryColor).Bold(true)
+	t.Focused.BlurredButton = t.Focused.BlurredButton.Foreground(AppTheme.SecondaryText).Background(AppTheme.BorderMuted)
 
-	t.Focused.TextInput.Cursor = t.Focused.TextInput.Cursor.Foreground(colorAccent)
-	t.Focused.TextInput.Placeholder = t.Focused.TextInput.Placeholder.Foreground(colorMuted)
-	t.Focused.TextInput.Prompt = t.Focused.TextInput.Prompt.Foreground(colorAccent)
+	t.Focused.TextInput.Cursor = t.Focused.TextInput.Cursor.Foreground(AppTheme.PrimaryColor)
+	t.Focused.TextInput.Placeholder = t.Focused.TextInput.Placeholder.Foreground(AppTheme.SecondaryText)
+	t.Focused.TextInput.Prompt = t.Focused.TextInput.Prompt.Foreground(AppTheme.PrimaryColor)
 
 	t.Blurred = t.Focused
 	t.Blurred.Base = t.Blurred.Base.BorderStyle(lipgloss.HiddenBorder())
-	t.Blurred.Title = t.Blurred.Title.Foreground(colorMuted).Bold(false)
-	t.Blurred.TextInput.Prompt = t.Blurred.TextInput.Prompt.Foreground(colorMuted)
-	t.Blurred.TextInput.Text = t.Blurred.TextInput.Text.Foreground(colorMuted)
+	t.Blurred.Title = t.Blurred.Title.Foreground(AppTheme.SecondaryText).Bold(false)
+	t.Blurred.TextInput.Prompt = t.Blurred.TextInput.Prompt.Foreground(AppTheme.SecondaryText)
+	t.Blurred.TextInput.Text = t.Blurred.TextInput.Text.Foreground(AppTheme.SecondaryText)
 
 	return t
 }

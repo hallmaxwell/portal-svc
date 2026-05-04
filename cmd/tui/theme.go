@@ -3,19 +3,36 @@ package tui
 import "github.com/charmbracelet/lipgloss"
 
 type Theme struct {
+	PrimaryColor   lipgloss.AdaptiveColor
+	SecondaryText  lipgloss.AdaptiveColor
+	BorderMuted    lipgloss.AdaptiveColor
+	HighlightColor lipgloss.AdaptiveColor
+	Bg             lipgloss.AdaptiveColor
+	ErrorColor     lipgloss.AdaptiveColor
+	SuccessColor   lipgloss.AdaptiveColor
+}
+
+var AppTheme = Theme{
+	PrimaryColor:   lipgloss.AdaptiveColor{Light: "#0055FF", Dark: "#00D2FF"}, // Accent
+	SecondaryText:  lipgloss.AdaptiveColor{Light: "#888888", Dark: "#737373"}, // Muted
+	BorderMuted:    lipgloss.AdaptiveColor{Light: "#DDDDDD", Dark: "#444444"}, // Low contrast
+	HighlightColor: lipgloss.AdaptiveColor{Light: "#E6F0FF", Dark: "#2A2A2A"}, // For whole row highlighting
+	Bg:             lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1A1A1A"},
+	ErrorColor:     lipgloss.AdaptiveColor{Light: "#FF0000", Dark: "#FF5555"},
+	SuccessColor:   lipgloss.AdaptiveColor{Light: "#00AA00", Dark: "#55FF55"},
+}
+
+// Ensure old code compiles until fully refactored, providing backward compatibility
+var DefaultTheme = struct {
+	Accent      lipgloss.Color
 	TextPrimary lipgloss.Color
 	TextMuted   lipgloss.Color
 	BorderMuted lipgloss.Color
-	Accent      lipgloss.Color
 	Bg          lipgloss.Color
-	Error       lipgloss.Color
-}
-
-var DefaultTheme = Theme{
+}{
+	Accent:      lipgloss.Color(AppTheme.PrimaryColor.Dark),
 	TextPrimary: lipgloss.Color("#E0E0E0"),
-	TextMuted:   lipgloss.Color("#737373"),
-	BorderMuted: lipgloss.Color("#2A2A2A"), // Extremely dark border, almost blends into the background
-	Accent:      lipgloss.Color("#00D2FF"), // Base accent (cyan), we'll add gradient for the logo separately
-	Bg:          lipgloss.Color("#1A1A1A"),
-	Error:       lipgloss.Color("#FF0000"),
+	TextMuted:   lipgloss.Color(AppTheme.SecondaryText.Dark),
+	BorderMuted: lipgloss.Color(AppTheme.BorderMuted.Dark),
+	Bg:          lipgloss.Color(AppTheme.Bg.Dark),
 }
