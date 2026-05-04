@@ -1,0 +1,53 @@
+name: TUI Preview
+
+on:
+  pull_request:
+    paths:
+      - 'cmd/tui/**'
+      - 'vhs.tape'
+      - '.github/workflows/preview.yml'
+
+jobs:
+  preview:
+    runs-on: ubuntu-latest
+    permissions:
+      pull-requests: write
+      contents: read
+
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Set up Go
+        uses: actions/setup-go@v5
+        with:
+          go-version: '1.24.x'
+
+      - name: Install vhs, ffmpeg, ttyd
+        run: |
+          sudo mkdir -p /etc/apt/keyrings
+          curl -fsSL https://repo.charm.sh/apt/gpg.key | sudo gpg --dearmor -o /etc/apt/keyrings/charm.gpg
+          echo "deb [signed-by=/etc/apt/keyrings/charm.gpg] https://repo.charm.sh/apt/ * *" | sudo tee /etc/apt/sources.list.d/charm.list
+          sudo apt update && sudo apt install -y vhs ffmpeg ttyd
+
+      - name: Build portal-svc
+        run: go build -o portal-svc ./cmd/svc
+
+      - name: Run vhs
+        run: vhs vhs.tape
+
+      - name: Publish GIF
+        id: publish
+        run: |
+          URL=$(vhs publish demo.gif)
+          echo "url=$URL" >> $GITHUB_OUTPUT
+
+      - name: Comment on PR
+        uses: peter-evans/create-or-update-comment@v4
+        with:
+          issue-number: ${{ github.event.pull_request.number }}
+          body: |
+            ### TUI Preview :sparkles:
+            We generated a preview of the TUI changes for this PR!
+
+            ![TUI Preview](${{ steps.publish.outputs.url }})
