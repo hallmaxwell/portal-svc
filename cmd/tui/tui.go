@@ -9,6 +9,8 @@ import (
 	"strings"
 	"time"
 
+	"hawego/portal/cmd/tui/components"
+
 	"github.com/charmbracelet/bubbles/list"
 	"github.com/charmbracelet/bubbles/textinput"
 	tea "github.com/charmbracelet/bubbletea"
@@ -434,10 +436,12 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	// Create a modern, refined header with Typography
+	bannerText := components.GetLogoByWidth(m.effectiveWidth)
+
 	headerText := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(AppTheme.PrimaryColor).
-		Render("Portal Service Manager")
+		Render(bannerText)
 
 	headerDesc := lipgloss.NewStyle().
 		Foreground(AppTheme.SecondaryText).
