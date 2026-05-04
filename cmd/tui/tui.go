@@ -92,7 +92,7 @@ func initialModel() model {
 	ti := textinput.New()
 	ti.Placeholder = "Type / for commands, @ for paths..."
 	ti.Focus()
-	ti.Prompt = "> "
+	ti.Prompt = "✧ " // Gemini-style prompt
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(AppTheme.PrimaryColor).Bold(true)
 	ti.Cursor.Style = lipgloss.NewStyle().Foreground(AppTheme.PrimaryColor)
 	ti.Cursor.Blink = true
@@ -433,32 +433,32 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m model) View() string {
-	// Create a modern, refined header with Typography
+	// Create a modern, refined header with Typography mimicking Gemini Banner
 	headerText := lipgloss.NewStyle().
 		Bold(true).
-		Foreground(AppTheme.PrimaryColor).
 		Render("Portal Service Manager")
 
 	headerDesc := lipgloss.NewStyle().
 		Foreground(AppTheme.SecondaryText).
 		Render("Silky-smooth proxy experience")
 
-	headerContent := lipgloss.JoinVertical(lipgloss.Center, headerText, headerDesc)
+	headerContent := lipgloss.JoinVertical(lipgloss.Left, headerText, headerDesc)
 
+	// Gemini-style rounded border Banner
 	headerView := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder(), false, false, true, false).
-		BorderForeground(AppTheme.BorderMuted).
-		MarginBottom(2).
-		PaddingBottom(1).
+		Border(lipgloss.RoundedBorder()).
+		BorderForeground(AppTheme.PrimaryColor).
+		PaddingLeft(1).
+		PaddingRight(1).
+		MarginBottom(1).
 		Width(m.effectiveWidth).
-		Align(lipgloss.Center).
 		Render(headerContent)
 
-	// Command Palette
+	// Command Palette (Input Area without border)
 	inputView := lipgloss.NewStyle().
 		Width(m.effectiveWidth).
-		Align(lipgloss.Center).
-		Render(m.renderGradientBox())
+		Align(lipgloss.Left).
+		Render(m.renderInputArea())
 
 	// Dynamic Content (Forms or Command Outputs)
 	var dynamicView string
@@ -466,7 +466,7 @@ func (m model) View() string {
 		formView := m.childForm.View()
 		dynamicView = lipgloss.NewStyle().
 			Width(m.effectiveWidth).
-			Align(lipgloss.Center).
+			Align(lipgloss.Left).
 			MarginTop(1).
 			Render(formView)
 	} else if len(m.commandOutput) > 0 {
@@ -478,7 +478,7 @@ func (m model) View() string {
 		dynamicView = lipgloss.NewStyle().
 			Foreground(AppTheme.SecondaryText).
 			Width(m.effectiveWidth).
-			Align(lipgloss.Center).
+			Align(lipgloss.Left).
 			MarginTop(1).
 			Render(outText)
 	}
@@ -491,12 +491,12 @@ func (m model) View() string {
 	}
 	systemCheck := fmt.Sprintf(" | sing-box: %s", statusText)
 
-	footerContent := lipgloss.JoinHorizontal(lipgloss.Center, versionText, systemCheck)
+	footerContent := lipgloss.JoinHorizontal(lipgloss.Left, versionText, systemCheck)
 	footerView := lipgloss.NewStyle().
 		Foreground(AppTheme.SecondaryText).
-		MarginTop(2).
+		MarginTop(1).
 		Width(m.effectiveWidth).
-		Align(lipgloss.Center).
+		Align(lipgloss.Left).
 		Render(footerContent)
 
 	// Combine all blocks cleanly with JoinVertical
@@ -506,10 +506,10 @@ func (m model) View() string {
 	}
 	blocks = append(blocks, footerView)
 
-	mainContent := lipgloss.JoinVertical(lipgloss.Center, blocks...)
+	mainContent := lipgloss.JoinVertical(lipgloss.Left, blocks...)
 
-	// Center everything vertically and horizontally in the viewport
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, mainContent)
+	// Left-aligned natural top-to-bottom layout, like React/Ink
+	return lipgloss.NewStyle().Padding(1, 2).Render(mainContent)
 }
 
 func RunTUI() {
@@ -543,24 +543,17 @@ func RunTUI() {
 	}
 }
 
-func (m model) renderGradientBox() string {
+func (m model) renderInputArea() string {
 	width := m.effectiveWidth
 
-	currentBorderColor := AppTheme.BorderMuted
-	if m.ti.Focused() {
-		currentBorderColor = AppTheme.PrimaryColor
-	}
-
-	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(currentBorderColor).
-		Padding(1, 2).
+	inputStyle := lipgloss.NewStyle().
 		Width(width).
 		Align(lipgloss.Left)
 
 	var b strings.Builder
 
-	b.WriteString(boxStyle.Render(m.ti.View()))
+	// Borderless input, matching Gemini natural flow
+	b.WriteString(inputStyle.Render(m.ti.View()))
 
 	// Render dropdown options if active
 	if m.dropdownMode != "" && len(m.optionsList.Items()) > 0 {
