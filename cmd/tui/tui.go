@@ -92,7 +92,7 @@ func initialModel() model {
 	ti := textinput.New()
 	ti.Placeholder = "Type / for commands, @ for paths..."
 	ti.Focus()
-	ti.Prompt = "> "
+	ti.Prompt = "✧ "
 	ti.PromptStyle = lipgloss.NewStyle().Foreground(AppTheme.PrimaryColor).Bold(true)
 	ti.Cursor.Style = lipgloss.NewStyle().Foreground(AppTheme.PrimaryColor)
 	ti.Cursor.Blink = true
@@ -434,30 +434,28 @@ func (m model) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m model) View() string {
 	// Create a modern, refined header with Typography
-	headerText := lipgloss.NewStyle().
+	bannerText := `    ____  ____  ____  _________    __
+   / __ \/ __ \/ __ \/_  __/   |  / /
+  / /_/ / / / / /_/ / / / / /| | / /
+ / ____/ /_/ / _, _/ / / / ___ |/ /___
+/_/    \____/_/ |_| /_/ /_/  |_/_____/`
+
+	headerContent := lipgloss.NewStyle().
 		Bold(true).
 		Foreground(AppTheme.PrimaryColor).
-		Render("Portal Service Manager")
-
-	headerDesc := lipgloss.NewStyle().
-		Foreground(AppTheme.SecondaryText).
-		Render("Silky-smooth proxy experience")
-
-	headerContent := lipgloss.JoinVertical(lipgloss.Center, headerText, headerDesc)
+		Render(bannerText)
 
 	headerView := lipgloss.NewStyle().
-		Border(lipgloss.NormalBorder(), false, false, true, false).
-		BorderForeground(AppTheme.BorderMuted).
 		MarginBottom(2).
 		PaddingBottom(1).
 		Width(m.effectiveWidth).
-		Align(lipgloss.Center).
+		Align(lipgloss.Left).
 		Render(headerContent)
 
 	// Command Palette
 	inputView := lipgloss.NewStyle().
 		Width(m.effectiveWidth).
-		Align(lipgloss.Center).
+		Align(lipgloss.Left).
 		Render(m.renderGradientBox())
 
 	// Dynamic Content (Forms or Command Outputs)
@@ -466,7 +464,7 @@ func (m model) View() string {
 		formView := m.childForm.View()
 		dynamicView = lipgloss.NewStyle().
 			Width(m.effectiveWidth).
-			Align(lipgloss.Center).
+			Align(lipgloss.Left).
 			MarginTop(1).
 			Render(formView)
 	} else if len(m.commandOutput) > 0 {
@@ -478,7 +476,7 @@ func (m model) View() string {
 		dynamicView = lipgloss.NewStyle().
 			Foreground(AppTheme.SecondaryText).
 			Width(m.effectiveWidth).
-			Align(lipgloss.Center).
+			Align(lipgloss.Left).
 			MarginTop(1).
 			Render(outText)
 	}
@@ -491,12 +489,12 @@ func (m model) View() string {
 	}
 	systemCheck := fmt.Sprintf(" | sing-box: %s", statusText)
 
-	footerContent := lipgloss.JoinHorizontal(lipgloss.Center, versionText, systemCheck)
+	footerContent := lipgloss.JoinHorizontal(lipgloss.Left, versionText, systemCheck)
 	footerView := lipgloss.NewStyle().
 		Foreground(AppTheme.SecondaryText).
 		MarginTop(2).
 		Width(m.effectiveWidth).
-		Align(lipgloss.Center).
+		Align(lipgloss.Left).
 		Render(footerContent)
 
 	// Combine all blocks cleanly with JoinVertical
@@ -506,10 +504,10 @@ func (m model) View() string {
 	}
 	blocks = append(blocks, footerView)
 
-	mainContent := lipgloss.JoinVertical(lipgloss.Center, blocks...)
+	mainContent := lipgloss.JoinVertical(lipgloss.Left, blocks...)
 
-	// Center everything vertically and horizontally in the viewport
-	return lipgloss.Place(m.width, m.height, lipgloss.Center, lipgloss.Center, mainContent)
+	// Align everything top-left in the viewport
+	return lipgloss.Place(m.width, m.height, lipgloss.Left, lipgloss.Top, mainContent)
 }
 
 func RunTUI() {
@@ -546,15 +544,8 @@ func RunTUI() {
 func (m model) renderGradientBox() string {
 	width := m.effectiveWidth
 
-	currentBorderColor := AppTheme.BorderMuted
-	if m.ti.Focused() {
-		currentBorderColor = AppTheme.PrimaryColor
-	}
-
 	boxStyle := lipgloss.NewStyle().
-		Border(lipgloss.RoundedBorder()).
-		BorderForeground(currentBorderColor).
-		Padding(1, 2).
+		Padding(0, 1).
 		Width(width).
 		Align(lipgloss.Left)
 

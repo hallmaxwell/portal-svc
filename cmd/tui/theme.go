@@ -13,10 +13,10 @@ type Theme struct {
 }
 
 var AppTheme = Theme{
-	PrimaryColor:   lipgloss.AdaptiveColor{Light: "#0055FF", Dark: "#00D2FF"}, // Accent
+	PrimaryColor:   lipgloss.AdaptiveColor{Light: "#FF5722", Dark: "#FF5722"}, // Accent (Orange-Red)
 	SecondaryText:  lipgloss.AdaptiveColor{Light: "#888888", Dark: "#737373"}, // Muted
 	BorderMuted:    lipgloss.AdaptiveColor{Light: "#DDDDDD", Dark: "#444444"}, // Low contrast
-	HighlightColor: lipgloss.AdaptiveColor{Light: "#E6F0FF", Dark: "#2A2A2A"}, // For whole row highlighting
+	HighlightColor: lipgloss.AdaptiveColor{Light: "#FFEBEE", Dark: "#3E2723"}, // For whole row highlighting
 	Bg:             lipgloss.AdaptiveColor{Light: "#FFFFFF", Dark: "#1A1A1A"},
 	ErrorColor:     lipgloss.AdaptiveColor{Light: "#FF0000", Dark: "#FF5555"},
 	SuccessColor:   lipgloss.AdaptiveColor{Light: "#00AA00", Dark: "#55FF55"},
