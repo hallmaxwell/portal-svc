@@ -578,8 +578,28 @@ func main() {
 				}
 			}
 
+			// Check for elevated privileges when installing/starting/stopping/uninstalling service
+			if svcCmd == "install" || svcCmd == "start" || svcCmd == "stop" || svcCmd == "uninstall" || svcCmd == "restart" {
+				if !util.IsAdmin() {
+					fmt.Println("Elevated privileges required for service command. Attempting to elevate...")
+					err := util.RunMeElevated()
+					if err != nil {
+						fmt.Fprintf(os.Stderr, "Failed to elevate privileges: %v\n", err)
+						fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
+						os.Exit(1)
+					}
+					// Exit the current unprivileged process, as the elevated one handled the command
+					return
+				}
+			}
+
 			err = service.Control(s, svcCmd)
 			if err != nil {
+				if strings.Contains(err.Error(), "Access is denied") || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "requires elevation") {
+					fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
+					os.Exit(1)
+				}
+
 				fmt.Fprintf(os.Stderr, "Failed to execute service command '%s': %v\n", svcCmd, err)
 				os.Exit(1)
 			}
