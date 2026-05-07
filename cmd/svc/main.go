@@ -346,12 +346,75 @@ func runTransit(templatePath string) {
 // ==========================================
 // Main & CLI Logic
 // ==========================================
+
+func printMainUsage() {
+	fmt.Println(`Usage:
+  portal-svc [command]
+
+Available Commands:
+  dock        Sing-Box background service with auto-recovery
+  transit     Launch a transit node
+  logs        View service logs
+
+Flags:
+  -h, --help   help for portal-svc
+
+Use "portal-svc [command] --help" for more information about a command.`)
+}
+
+func printDockUsage() {
+	fmt.Println(`Sing-Box background service with auto-recovery
+
+Usage:
+  portal-svc dock [flags] [service-command]
+
+Service Commands:
+  install     Install as System Service
+  start       Start Service
+  stop        Stop Service
+  restart     Restart Service
+  uninstall   Remove Service
+
+Flags:
+      --config string   Path to dock template config (default "dock_config.tmpl.json")
+  -h, --help            help for dock`)
+}
+
+func printTransitUsage() {
+	fmt.Println(`Launch a transit node
+
+Usage:
+  portal-svc transit [flags]
+
+Flags:
+      --config string   Path to transit template config (default "transit_config.tmpl.json")
+  -h, --help            help for transit`)
+}
+
+func printLogsUsage() {
+	fmt.Println(`View service logs
+
+Usage:
+  portal-svc logs [flags] [error|info]
+
+Flags:
+  -f, --follow          Follow log output
+  -n, --lines int       Number of lines to show (default 100)
+  -h, --help            help for logs`)
+}
+
 func handleLogsCmd(args []string) {
-	logsCmd := flag.NewFlagSet("logs", flag.ExitOnError)
+	logsCmd := flag.NewFlagSet("logs", flag.ContinueOnError)
+	logsCmd.Usage = printLogsUsage
 	nLines := logsCmd.Int("n", 100, "")
 	follow := logsCmd.Bool("f", false, "")
 
-	logsCmd.Parse(args)
+	err := logsCmd.Parse(args)
+	if err == flag.ErrHelp {
+		os.Exit(0)
+	} else if err != nil {
+		os.Exit(1)
+	}
 
 	targetLogFile := infoLogFilePath
 	if logsCmd.NArg() > 0 && logsCmd.Arg(0) == "error" {
@@ -400,11 +463,16 @@ func handleLogsCmd(args []string) {
 
 func main() {
 	if len(os.Args) < 2 {
-		fmt.Println("Usage: portal-svc <dock|transit|logs> [args]")
-		os.Exit(1)
+		printMainUsage()
+		os.Exit(0)
 	}
 
 	cmd := os.Args[1]
+
+	if cmd == "-h" || cmd == "--help" {
+		printMainUsage()
+		os.Exit(0)
+	}
 
 	if cmd == "logs" {
 		handleLogsCmd(os.Args[2:])
@@ -412,9 +480,16 @@ func main() {
 	}
 
 	if cmd == "transit" {
-		transitCmd := flag.NewFlagSet("transit", flag.ExitOnError)
+		transitCmd := flag.NewFlagSet("transit", flag.ContinueOnError)
+		transitCmd.Usage = printTransitUsage
 		configPath := transitCmd.String("config", "transit_config.tmpl.json", "Path to transit template config")
-		transitCmd.Parse(os.Args[2:])
+
+		err := transitCmd.Parse(os.Args[2:])
+		if err == flag.ErrHelp {
+			os.Exit(0)
+		} else if err != nil {
+			os.Exit(1)
+		}
 
 		runTransit(*configPath)
 		return
@@ -422,6 +497,7 @@ func main() {
 
 	if cmd == "dock" {
 		dockCmd := flag.NewFlagSet("dock", flag.ContinueOnError)
+		dockCmd.Usage = printDockUsage
 		configPath := dockCmd.String("config", "dock_config.tmpl.json", "Path to dock template config")
 
 		// Extract flag args vs service args
@@ -442,7 +518,12 @@ func main() {
 			}
 		}
 
-		dockCmd.Parse(flagArgs)
+		err := dockCmd.Parse(flagArgs)
+		if err == flag.ErrHelp {
+			os.Exit(0)
+		} else if err != nil {
+			os.Exit(1)
+		}
 
 		svcConfig := &service.Config{
 			Name:        "SingBoxWrapper",
@@ -530,6 +611,7 @@ func main() {
 		return
 	}
 
-	fmt.Printf("Unknown command: %s\n", cmd)
+	fmt.Printf("Error: unknown command %q for \"portal-svc\"\n", cmd)
+	printMainUsage()
 	os.Exit(1)
 }
