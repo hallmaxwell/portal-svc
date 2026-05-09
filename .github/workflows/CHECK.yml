@@ -38,7 +38,7 @@ jobs:
           cd ${{ github.workspace }}
           go mod download
           go vet ./...
-          go build -o /dev/null ./cmd/svc/...
+          go build -trimpath -o /dev/null ./cmd/svc/...
       
       - name: Install sing-box
         env:
@@ -154,7 +154,7 @@ jobs:
             
             cd ${{ github.workspace }}
             go mod download
-            GOOS=$GOOS GOARCH=$GOARCH go build -ldflags="-s -w" -o "${{ github.workspace }}/portal_out/$DIR_NAME/$BIN_NAME" ./cmd/svc/main.go
+            GOOS=$GOOS GOARCH=$GOARCH go build -trimpath -ldflags="-s -w" -o "${{ github.workspace }}/portal_out/$DIR_NAME/$BIN_NAME" ./cmd/svc/main.go
             
             cp LICENSE "${{ github.workspace }}/portal_out/$DIR_NAME/" 2>/dev/null || echo "LICENSE file not found!"
             
