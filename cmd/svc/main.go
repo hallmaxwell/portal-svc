@@ -1,7 +1,6 @@
 package main
 
 import (
-	"bufio"
 	"flag"
 	"fmt"
 	"log"
@@ -183,45 +182,21 @@ func (p *dockProgram) run() {
 		return
 	}
 
-	envMap := make(map[string]string)
-	envFile, err := os.Open(envPath)
+	envMap, err := util.LoadEnvMap(envPath)
 	if err != nil {
 		sysLogError(fmt.Sprintf("Failed to open environment file: %v", err), false)
 		return
 	}
-
-	scanner := bufio.NewScanner(envFile)
-	for scanner.Scan() {
-		line := strings.TrimSpace(scanner.Text())
-		if line == "" || strings.HasPrefix(line, "#") {
-			continue
-		}
-		parts := strings.SplitN(line, "=", 2)
-		if len(parts) == 2 {
-			envMap[strings.TrimSpace(parts[0])] = strings.Trim(strings.TrimSpace(parts[1]), `"'`)
-		}
-	}
-	envFile.Close()
 
 	var tplPath = p.templatePath
 	if !filepath.IsAbs(tplPath) {
 		tplPath = filepath.Join(baseDir, tplPath)
 	}
 
-	tempData, err := os.ReadFile(tplPath)
+	content, err := util.RenderConfigTemplate(tplPath, envMap)
 	if err != nil {
-		sysLogError(fmt.Sprintf("Failed to read config template: %v", err), false)
+		sysLogError(fmt.Sprintf("Failed to render config template: %v", err), false)
 		return
-	}
-
-	content := string(tempData)
-	for key, val := range envMap {
-		if util.IsRawJSONValue(val) {
-			content = strings.ReplaceAll(content, `"{`+key+`}"`, val)
-			content = strings.ReplaceAll(content, `{`+key+`}`, val)
-		} else {
-			content = strings.ReplaceAll(content, `{`+key+`}`, val)
-		}
 	}
 
 	os.WriteFile(p.outPath, []byte(content), 0600)
@@ -287,37 +262,18 @@ func (p *dockProgram) Stop(s service.Service) error {
 func runTransit(templatePath string) {
 	initLogFiles()
 
-	data, err := os.ReadFile(templatePath)
-	if err != nil {
-		sysLogError(fmt.Sprintf("Failed to read config template: %v", err), true)
-		os.Exit(1)
-	}
-	content := string(data)
-
-	var replacements []string
+	envMap := make(map[string]string)
 	for _, env := range os.Environ() {
 		pair := strings.SplitN(env, "=", 2)
-		if len(pair) != 2 {
-			continue
-		}
-
-		key, val := pair[0], strings.Trim(strings.TrimSpace(pair[1]), `"'`)
-
-		if !strings.Contains(content, "{"+key+"}") {
-			continue
-		}
-
-		if util.IsRawJSONValue(val) {
-			content = strings.ReplaceAll(content, `"{`+key+`}"`, val)
-			content = strings.ReplaceAll(content, `{`+key+`}`, val)
-		} else {
-			replacements = append(replacements, `{`+key+`}`, val)
+		if len(pair) == 2 {
+			envMap[pair[0]] = pair[1]
 		}
 	}
 
-	if len(replacements) > 0 {
-		replacer := strings.NewReplacer(replacements...)
-		content = replacer.Replace(content)
+	content, err := util.RenderConfigTemplate(templatePath, envMap)
+	if err != nil {
+		sysLogError(fmt.Sprintf("Failed to render config template: %v", err), true)
+		os.Exit(1)
 	}
 
 	outPath := filepath.Join(os.TempDir(), "transit.config.run.json")
@@ -355,6 +311,7 @@ Available Commands:
   dock        Sing-Box background service with auto-recovery
   transit     Launch a transit node
   logs        View service logs
+  render      Render a configuration template with environment variables
 
 Flags:
   -h, --help   help for portal-svc
@@ -401,6 +358,69 @@ Flags:
   -f, --follow          Follow log output
   -n, --lines int       Number of lines to show (default 100)
   -h, --help            help for logs`)
+}
+
+func printRenderUsage() {
+	fmt.Println(`Render a configuration template with environment variables
+
+Usage:
+  portal-svc render [flags]
+
+Flags:
+      --config string   Path to the input template file
+      --out string      Path to the output JSON file
+      --ci              Inject CI rules (ci-direct-out, disable auto_route)
+  -h, --help            help for render`)
+}
+
+func handleRenderCmd(args []string) {
+	renderCmd := flag.NewFlagSet("render", flag.ContinueOnError)
+	renderCmd.Usage = printRenderUsage
+	configPath := renderCmd.String("config", "", "Path to the input template file")
+	outPath := renderCmd.String("out", "", "Path to the output JSON file")
+	ci := renderCmd.Bool("ci", false, "Inject CI rules")
+
+	err := renderCmd.Parse(args)
+	if err == flag.ErrHelp {
+		os.Exit(0)
+	} else if err != nil {
+		os.Exit(1)
+	}
+
+	if *configPath == "" || *outPath == "" {
+		fmt.Println("Error: --config and --out are required.")
+		printRenderUsage()
+		os.Exit(1)
+	}
+
+	envMap := make(map[string]string)
+	for _, env := range os.Environ() {
+		pair := strings.SplitN(env, "=", 2)
+		if len(pair) == 2 {
+			envMap[pair[0]] = pair[1]
+		}
+	}
+
+	content, err := util.RenderConfigTemplate(*configPath, envMap)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to render template: %v\n", err)
+		os.Exit(1)
+	}
+
+	if *ci {
+		content, err = util.InjectCIRules(content)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to inject CI rules: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	if err := os.WriteFile(*outPath, []byte(content), 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to write output file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Printf("Successfully rendered configuration to %s\n", *outPath)
 }
 
 func handleLogsCmd(args []string) {
@@ -476,6 +496,11 @@ func main() {
 
 	if cmd == "logs" {
 		handleLogsCmd(os.Args[2:])
+		return
+	}
+
+	if cmd == "render" {
+		handleRenderCmd(os.Args[2:])
 		return
 	}
 

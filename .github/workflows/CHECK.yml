@@ -39,6 +39,9 @@ jobs:
           go mod download
           go vet ./...
           go build -trimpath -o /dev/null ./cmd/svc/...
+
+          unset GOOS
+          go build -o portal-svc ./cmd/svc/main.go
       
       - name: Install sing-box
         env:
@@ -51,7 +54,7 @@ jobs:
       - name: Test Local Node (Dock)
         run: |
           cd ${{ github.workspace }}
-          python3 .github/workflows/render_config.py dock_config.tmpl.json /tmp/dock_run.json
+          ./portal-svc render --config dock_config.tmpl.json --out /tmp/dock_run.json --ci
           
           sing-box check -c /tmp/dock_run.json
           sudo timeout 5 sing-box run -c /tmp/dock_run.json > dock.log 2>&1 || STATUS=$?
@@ -70,7 +73,7 @@ jobs:
       - name: Test Cloud Node (Transit)
         run: |
           cd ${{ github.workspace }}
-          python3 .github/workflows/render_config.py transit_config.tmpl.json /tmp/transit_run.json
+          ./portal-svc render --config transit_config.tmpl.json --out /tmp/transit_run.json --ci
           
           sing-box check -c /tmp/transit_run.json
           sudo timeout 5 sing-box run -c /tmp/transit_run.json > transit.log 2>&1 || STATUS=$?
