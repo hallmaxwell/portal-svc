@@ -18,76 +18,70 @@ import (
 
 	"github.com/kardianos/service"
 	"github.com/nxadm/tail"
+	"gopkg.in/natefinch/lumberjack.v2"
 )
 
 var (
-	infoLogFilePath  = filepath.Join(os.TempDir(), "portal_svc_info.log")
-	errorLogFilePath = filepath.Join(os.TempDir(), "portal_svc_error.log")
+	infoLogFilePath  string
+	errorLogFilePath string
 
-	infoLogger  *boundedLogger
-	errorLogger *boundedLogger
+	infoLogger  *lumberjack.Logger
+	errorLogger *lumberjack.Logger
 	logMu       sync.Mutex
 )
 
-type boundedLogger struct {
-	filePath string
-	maxLines int
-	lines    []string
-	loaded   bool
-}
-
 func initLogFiles() {
-	_ = os.WriteFile(infoLogFilePath, []byte(""), 0666)
-	_ = os.WriteFile(errorLogFilePath, []byte(""), 0666)
+	exe, err := os.Executable()
+	if err != nil {
+		exe = "."
+	}
+	baseDir := filepath.Dir(exe)
+	logsDir := filepath.Join(baseDir, "logs")
+	os.MkdirAll(logsDir, 0700)
 
-	infoLogger = &boundedLogger{filePath: infoLogFilePath, maxLines: 1000}
-	errorLogger = &boundedLogger{filePath: errorLogFilePath, maxLines: 1000}
-}
+	infoLogFilePath = filepath.Join(logsDir, "access.log")
+	errorLogFilePath = filepath.Join(logsDir, "error.log")
 
-func appendToLog(logger *boundedLogger, lines []string) {
-	logMu.Lock()
-	defer logMu.Unlock()
-
-	if logger == nil {
-		return
+	infoLogger = &lumberjack.Logger{
+		Filename:   infoLogFilePath,
+		MaxSize:    10, // megabytes
+		MaxBackups: 5,
+		MaxAge:     28, // days
+		Compress:   true,
 	}
 
-	if !logger.loaded {
-		data, err := os.ReadFile(logger.filePath)
-		if err == nil {
-			fileLines := strings.Split(string(data), "\n")
-			for _, l := range fileLines {
-				if len(strings.TrimSpace(l)) > 0 {
-					logger.lines = append(logger.lines, l)
-				}
-			}
-		}
-		logger.loaded = true
+	errorLogger = &lumberjack.Logger{
+		Filename:   errorLogFilePath,
+		MaxSize:    10, // megabytes
+		MaxBackups: 5,
+		MaxAge:     28, // days
+		Compress:   true,
 	}
 
-	logger.lines = append(logger.lines, lines...)
+	// Always clear logs on start
+	_ = infoLogger.Rotate()
+	_ = errorLogger.Rotate()
 
-	if len(logger.lines) > logger.maxLines {
-		logger.lines = logger.lines[len(logger.lines)-logger.maxLines:]
-	}
-
-	outData := strings.Join(logger.lines, "\n") + "\n"
-	_ = os.WriteFile(logger.filePath, []byte(outData), 0666)
+	// Ensure empty logs exist
+	os.WriteFile(infoLogFilePath, []byte(""), 0600)
+	os.WriteFile(errorLogFilePath, []byte(""), 0600)
 }
 
 func writeLog(level, prefix, msg string, printToStdout bool) {
 	if infoLogger == nil || errorLogger == nil {
 		return
 	}
+
+	logMu.Lock()
+	defer logMu.Unlock()
+
 	timestamp := time.Now().Format("2006/01/02 15:04:05")
-	logLine := fmt.Sprintf("%s %s %s", timestamp, prefix, msg)
+	logLine := fmt.Sprintf("%s %s %s\n", timestamp, prefix, msg)
 
-	lines := []string{logLine}
-
-	appendToLog(infoLogger, lines)
+	infoLogger.Write([]byte(logLine))
 
 	if level == "error" {
-		appendToLog(errorLogger, lines)
+		errorLogger.Write([]byte(logLine))
 	}
 
 	if printToStdout {
@@ -118,7 +112,7 @@ func (w *singBoxLogWriter) Write(p []byte) (n int, err error) {
 		if len(strings.TrimSpace(l)) > 0 {
 			level := "info"
 			lowerL := strings.ToLower(l)
-			if strings.Contains(lowerL, "error") || strings.Contains(lowerL, "fatal") || w.isStderr {
+			if strings.Contains(lowerL, "error") || strings.Contains(lowerL, "fatal") || strings.Contains(lowerL, "warning") || w.isStderr {
 				level = "error"
 			}
 			writeLog(level, "sing-box:", l, w.printToStdout)
@@ -133,6 +127,21 @@ func killExistingSingBox() {
 	} else {
 		_ = exec.Command("killall", "-9", "sing-box").Run()
 	}
+}
+
+func recordSystemStatus() {
+	var cmd *exec.Cmd
+	if runtime.GOOS == "windows" {
+		cmd = exec.Command("netsh", "interface", "show", "interface")
+	} else {
+		cmd = exec.Command("ip", "link", "show")
+	}
+	out, err := cmd.CombinedOutput()
+	if err != nil {
+		sysLogError(fmt.Sprintf("Failed to record system status: %v", err), false)
+		return
+	}
+	sysLogError(fmt.Sprintf("System Status at crash:\n%s", string(out)), false)
 }
 
 // ==========================================
@@ -239,6 +248,8 @@ func (p *dockProgram) run() {
 
 	if !p.stopping {
 		sysLogError("Sing-box process exited unexpectedly", false)
+		recordSystemStatus()
+		os.Exit(1)
 	}
 }
 
@@ -262,9 +273,10 @@ func (p *dockProgram) monitorNetwork() {
 			if err != nil {
 				failCount++
 				if failCount >= 3 {
-					p.cleanup()
 					sysLogError("Network health check failed, triggering restart", false)
-					return
+					recordSystemStatus()
+					p.cleanup()
+					os.Exit(1)
 				}
 			} else {
 				failCount = 0
@@ -551,6 +563,10 @@ func main() {
 				exe, _ := os.Executable()
 				baseDir := filepath.Dir(exe)
 
+				// Initialize paths for log reading
+				logsDir := filepath.Join(baseDir, "logs")
+				errorLogFilePath = filepath.Join(logsDir, "error.log")
+
 				singBoxBin := "sing-box"
 				if runtime.GOOS == "windows" {
 					singBoxBin = "sing-box.exe"
@@ -584,6 +600,11 @@ func main() {
 					fmt.Println("Elevated privileges required for service command. Attempting to elevate...")
 					err := util.RunMeElevated()
 					if err != nil {
+						if strings.Contains(err.Error(), "elevated process exited with code") {
+							// The elevated child process failed, and it likely already printed its own error.
+							// Just pass the failure up.
+							os.Exit(1)
+						}
 						fmt.Fprintf(os.Stderr, "Failed to elevate privileges: %v\n", err)
 						fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
 						os.Exit(1)
