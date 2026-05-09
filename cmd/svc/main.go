@@ -526,9 +526,9 @@ func main() {
 		}
 
 		svcConfig := &service.Config{
-			Name:        "SingBoxWrapper",
-			DisplayName: "Sing-Box Wrapper Service",
-			Description: "Sing-Box background service with auto-recovery",
+			Name:        "PortalDaemon",
+			DisplayName: "Portal Daemon",
+			Description: "Portal Daemon background service with auto-recovery",
 			Option: service.KeyValue{
 				"OnFailure":              "restart",
 				"OnFailureDelayDuration": "10s",
