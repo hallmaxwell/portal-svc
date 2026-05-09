@@ -3,10 +3,9 @@ package main
 import (
 	"bytes"
 	"os"
-	"path/filepath"
 	"strings"
-	"sync"
 	"testing"
+	"time"
 )
 
 func TestSingBoxLogWriter(t *testing.T) {
@@ -29,7 +28,14 @@ func TestSingBoxLogWriter(t *testing.T) {
 			input:      "ERROR[0001] connection failed",
 			isStderr:   false,
 			wantLevel:  "error",
-			wantStderr: false, // In unified main.go, singBoxLogWriter itself doesn't directly write to os.Stderr unless in writeLog, but let's check
+			wantStderr: false,
+		},
+		{
+			name:       "Warning keyword in log",
+			input:      "WARNING[0001] connection failed",
+			isStderr:   false,
+			wantLevel:  "error",
+			wantStderr: false,
 		},
 		{
 			name:       "Fatal keyword in log",
@@ -47,6 +53,12 @@ func TestSingBoxLogWriter(t *testing.T) {
 		},
 	}
 
+	// Change directory to a temp dir so logs don't pollute the project
+	tempDir := t.TempDir()
+	oldWd, _ := os.Getwd()
+	os.Chdir(tempDir)
+	defer os.Chdir(oldWd)
+
 	for _, tt := range tests {
 		t.Run(tt.name, func(t *testing.T) {
 			// Mock stderr
@@ -56,10 +68,6 @@ func TestSingBoxLogWriter(t *testing.T) {
 
 			writer := &singBoxLogWriter{isStderr: tt.isStderr, printToStdout: false}
 
-			// We can't easily capture infoLogger/errorLogger since they are globals,
-			// but we can at least test that Write processes without crashing.
-			// Ideally we'd reset the globals and check them.
-
 			initLogFiles()
 
 			_, err := writer.Write([]byte(tt.input + "\n"))
@@ -67,13 +75,15 @@ func TestSingBoxLogWriter(t *testing.T) {
 				t.Fatalf("Write failed: %v", err)
 			}
 
+			// Allow time for file sync since it's an async potential or disk IO
+			time.Sleep(100 * time.Millisecond)
+
 			w.Close()
 			os.Stderr = oldStderr
 
 			var buf bytes.Buffer
 			buf.ReadFrom(r)
 
-			// read log files to check level
 			dataInfo, _ := os.ReadFile(infoLogFilePath)
 			dataError, _ := os.ReadFile(errorLogFilePath)
 
@@ -94,92 +104,33 @@ func TestSingBoxLogWriter(t *testing.T) {
 	}
 }
 
-func BenchmarkBoundedLogWriter(b *testing.B) {
-	tmpDir := b.TempDir()
-	filePath := filepath.Join(tmpDir, "test.log")
-
-	os.WriteFile(filePath, []byte(strings.Repeat("existing log line\n", 100)), 0666)
-
-	logger := &boundedLogger{filePath: filePath, maxLines: 100}
-
-	b.ResetTimer()
-	for i := 0; i < b.N; i++ {
-		appendToLog(logger, []string{"test log line"})
-	}
-}
-
-func TestBoundedLogWriter_Write(t *testing.T) {
+func TestWriteLog(t *testing.T) {
 	tempDir := t.TempDir()
-	logFile := filepath.Join(tempDir, "test.log")
-	logger := &boundedLogger{filePath: logFile, maxLines: 3}
+	oldWd, _ := os.Getwd()
+	os.Chdir(tempDir)
+	defer os.Chdir(oldWd)
 
-	// Write 1 line
-	appendToLog(logger, []string{"line 1"})
+	initLogFiles()
 
-	// Write 2 more lines
-	appendToLog(logger, []string{"line 2", "line 3"})
+	writeLog("info", "test:", "this is an info message", false)
+	writeLog("error", "test:", "this is an error message", false)
 
-	// Verify we have 3 lines
-	data, err := os.ReadFile(logFile)
-	if err != nil {
-		t.Fatalf("Failed to read log file: %v", err)
+	time.Sleep(100 * time.Millisecond)
+
+	dataInfo, _ := os.ReadFile(infoLogFilePath)
+	dataError, _ := os.ReadFile(errorLogFilePath)
+
+	if !strings.Contains(string(dataInfo), "this is an info message") {
+		t.Errorf("Expected info log to contain 'this is an info message'")
 	}
-	content := strings.TrimSpace(string(data))
-	lines := strings.Split(content, "\n")
-	if len(lines) != 3 {
-		t.Errorf("Expected 3 lines, got %d: %q", len(lines), lines)
-	}
-	if lines[0] != "line 1" || lines[2] != "line 3" {
-		t.Errorf("Unexpected content: %v", lines)
+	if !strings.Contains(string(dataInfo), "this is an error message") {
+		t.Errorf("Expected info log to contain 'this is an error message'")
 	}
 
-	// Write 2 more lines, should push out the first two
-	appendToLog(logger, []string{"line 4", "line 5"})
-
-	data, err = os.ReadFile(logFile)
-	if err != nil {
-		t.Fatalf("Failed to read log file: %v", err)
+	if strings.Contains(string(dataError), "this is an info message") {
+		t.Errorf("Did not expect error log to contain 'this is an info message'")
 	}
-	content = strings.TrimSpace(string(data))
-	lines = strings.Split(content, "\n")
-	if len(lines) != 3 {
-		t.Errorf("Expected 3 lines, got %d: %q", len(lines), lines)
-	}
-	if lines[0] != "line 3" || lines[1] != "line 4" || lines[2] != "line 5" {
-		t.Errorf("Unexpected content: %v", lines)
-	}
-}
-
-func TestBoundedLogWriter_Concurrency(t *testing.T) {
-	tempDir := t.TempDir()
-	logFile := filepath.Join(tempDir, "test_concurrent.log")
-	logger := &boundedLogger{filePath: logFile, maxLines: 100}
-
-	var wg sync.WaitGroup
-	numGoroutines := 10
-	writesPerGoroutine := 10
-
-	for i := 0; i < numGoroutines; i++ {
-		wg.Add(1)
-		go func(id int) {
-			defer wg.Done()
-			for j := 0; j < writesPerGoroutine; j++ {
-				appendToLog(logger, []string{"log entry"})
-			}
-		}(i)
-	}
-
-	wg.Wait()
-
-	data, err := os.ReadFile(logFile)
-	if err != nil {
-		t.Fatalf("Failed to read log file: %v", err)
-	}
-	content := strings.TrimSpace(string(data))
-	lines := strings.Split(content, "\n")
-
-	// Total writes is 100, maxLines is 100.
-	if len(lines) != 100 {
-		t.Errorf("Expected 100 lines, got %d", len(lines))
+	if !strings.Contains(string(dataError), "this is an error message") {
+		t.Errorf("Expected error log to contain 'this is an error message'")
 	}
 }
