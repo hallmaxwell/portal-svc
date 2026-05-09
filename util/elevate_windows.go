@@ -36,7 +36,7 @@ func IsAdmin() bool {
 
 const (
 	SEE_MASK_NOCLOSEPROCESS = 0x00000040
-	SW_SHOW                 = 5
+	SW_HIDE                 = 0
 )
 
 // SHELLEXECUTEINFO corresponds to the Windows SHELLEXECUTEINFOW structure.
@@ -108,7 +108,7 @@ func RunMeElevated() error {
 		LpFile:       exePtr,
 		LpParameters: argsPtr,
 		LpDirectory:  cwdPtr,
-		NShow:        SW_SHOW,
+		NShow:        SW_HIDE,
 	}
 	sei.CbSize = uint32(unsafe.Sizeof(sei))
 

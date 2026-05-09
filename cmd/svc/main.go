@@ -108,10 +108,9 @@ type singBoxLogWriter struct {
 func (w *singBoxLogWriter) Write(p []byte) (n int, err error) {
 	lines := strings.Split(strings.TrimSuffix(string(p), "\n"), "\n")
 	for _, l := range lines {
-		if len(strings.TrimSpace(l)) > 0 {
+		if util.IsNotBlank(l) {
 			level := "info"
-			lowerL := strings.ToLower(l)
-			if strings.Contains(lowerL, "error") || strings.Contains(lowerL, "fatal") || strings.Contains(lowerL, "warning") || w.isStderr {
+			if util.ContainsCaseInsensitive(l, "error") || util.ContainsCaseInsensitive(l, "fatal") {
 				level = "error"
 			}
 			writeLog(level, "sing-box:", l, w.printToStdout)
@@ -634,7 +633,8 @@ func main() {
 						fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
 						os.Exit(1)
 					}
-					// Exit the current unprivileged process, as the elevated one handled the command
+					// If elevation succeeded and the child exited with 0, print success and exit
+					fmt.Printf("Service command '%s' executed successfully.\n", svcCmd)
 					return
 				}
 			}

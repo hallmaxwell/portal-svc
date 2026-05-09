@@ -34,7 +34,7 @@ func TestSingBoxLogWriter(t *testing.T) {
 			name:       "Warning keyword in log",
 			input:      "WARNING[0001] connection failed",
 			isStderr:   false,
-			wantLevel:  "error",
+			wantLevel:  "info",
 			wantStderr: false,
 		},
 		{
@@ -46,9 +46,9 @@ func TestSingBoxLogWriter(t *testing.T) {
 		},
 		{
 			name:       "Stderr stream",
-			input:      "some unexpected error output",
+			input:      "some unexpected output",
 			isStderr:   true,
-			wantLevel:  "error",
+			wantLevel:  "info",
 			wantStderr: false,
 		},
 	}
