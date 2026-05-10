@@ -8,5 +8,5 @@ services:
     network_mode: host
     env_file: .env
     volumes:
-      - ../transit_config.tmpl.json:/transit_config.tmpl.json
+      - ../templates/transit_config.tmpl.json:/templates/transit_config.tmpl.json
       - /etc/localtime:/etc/localtime:ro

@@ -34,8 +34,8 @@ RUN mkdir -p /app/core
 COPY --from=builder /src/portal-svc /app/portal-svc
 
 # Copy configuration templates
-COPY dock_config.tmpl.json /app/dock_config.tmpl.json
-COPY transit_config.tmpl.json /app/transit_config.tmpl.json
+COPY templates/dock_config.tmpl.json /app/templates/dock_config.tmpl.json
+COPY templates/transit_config.tmpl.json /app/templates/transit_config.tmpl.json
 
 # Copy sing-box binary to the location expected by 'dock', and symlink for 'transit' (in $PATH)
 COPY --from=downloader /sing-box /app/core/sing-box
