@@ -581,92 +581,96 @@ func main() {
 		}
 
 		if len(svcArgs) > 0 {
-			svcCmd := svcArgs[0]
-
-			if svcCmd == "install" || svcCmd == "start" {
-				exe, _ := os.Executable()
-				baseDir := filepath.Dir(exe)
-
-				// Initialize paths for log reading
-				logsDir := filepath.Join(baseDir, "logs")
-				errorLogFilePath = filepath.Join(logsDir, "error.log")
-
-				singBoxBin := "sing-box"
-				if runtime.GOOS == "windows" {
-					singBoxBin = "sing-box.exe"
-				}
-				singBoxPath := filepath.Join(baseDir, "core", singBoxBin)
-
-				if _, err := os.Stat(singBoxPath); err != nil {
-					fmt.Printf("Pre-flight check failed: Sing-box executable not found at %s\n", singBoxPath)
-					os.Exit(1)
-				}
-
-				envPath := filepath.Join(baseDir, ".env")
-				if _, err := os.Stat(envPath); err != nil {
-					fmt.Printf("Pre-flight check failed: Environment file not found at %s\n", envPath)
-					os.Exit(1)
-				}
-
-				var tplPath = *configPath
-				if !filepath.IsAbs(tplPath) {
-					tplPath = filepath.Join(baseDir, tplPath)
-				}
-				if _, err := os.Stat(tplPath); err != nil {
-					fmt.Printf("Pre-flight check failed: Template file not found at %s\n", tplPath)
-					os.Exit(1)
+			// Pre-flight check: see if ANY command requires elevation
+			needsElevation := false
+			for _, svcCmd := range svcArgs {
+				if svcCmd == "install" || svcCmd == "start" || svcCmd == "stop" || svcCmd == "uninstall" || svcCmd == "restart" {
+					needsElevation = true
+					break
 				}
 			}
 
-			// Check for elevated privileges when installing/starting/stopping/uninstalling service
-			if svcCmd == "install" || svcCmd == "start" || svcCmd == "stop" || svcCmd == "uninstall" || svcCmd == "restart" {
-				if !util.IsAdmin() {
-					fmt.Println("Elevated privileges required for service command. Attempting to elevate...")
-					err := util.RunMeElevated()
-					if err != nil {
-						if strings.Contains(err.Error(), "elevated process exited with code") {
-							// The elevated child process failed, and it likely already printed its own error.
-							// Just pass the failure up.
-							os.Exit(1)
-						}
-						fmt.Fprintf(os.Stderr, "Failed to elevate privileges: %v\n", err)
-						fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
+			if needsElevation && !util.IsAdmin() {
+				fmt.Println("Elevated privileges required for service command(s). Attempting to elevate...")
+				err := util.RunMeElevated()
+				if err != nil {
+					if strings.Contains(err.Error(), "elevated process exited with code") {
+						// The elevated child process failed, and it likely already printed its own error.
 						os.Exit(1)
 					}
-					// If elevation succeeded and the child exited with 0, print success and exit
-					fmt.Printf("Service command '%s' executed successfully.\n", svcCmd)
-					return
-				}
-			}
-
-			err = service.Control(s, svcCmd)
-			if err != nil {
-				if strings.Contains(err.Error(), "Access is denied") || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "requires elevation") {
+					fmt.Fprintf(os.Stderr, "Failed to elevate privileges: %v\n", err)
 					fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
 					os.Exit(1)
 				}
-
-				fmt.Fprintf(os.Stderr, "Failed to execute service command '%s': %v\n", svcCmd, err)
-				os.Exit(1)
+				// The elevated child process executed everything successfully.
+				return
 			}
 
-			if svcCmd == "start" {
-				time.Sleep(2 * time.Second)
-				data, err := os.ReadFile(errorLogFilePath)
-				if err == nil && len(data) > 0 {
-					lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-					recentErrors := ""
-					for i := len(lines) - 1; i >= 0 && i >= len(lines)-5; i-- {
-						recentErrors = lines[i] + "\n" + recentErrors
+			for _, svcCmd := range svcArgs {
+				if svcCmd == "install" || svcCmd == "start" {
+					exe, _ := os.Executable()
+					baseDir := filepath.Dir(exe)
+
+					// Initialize paths for log reading
+					logsDir := filepath.Join(baseDir, "logs")
+					errorLogFilePath = filepath.Join(logsDir, "error.log")
+
+					singBoxBin := "sing-box"
+					if runtime.GOOS == "windows" {
+						singBoxBin = "sing-box.exe"
 					}
-					if len(strings.TrimSpace(recentErrors)) > 0 {
-						fmt.Printf("Service command 'start' executed, but errors occurred shortly after:\n%s\n", recentErrors)
+					singBoxPath := filepath.Join(baseDir, "core", singBoxBin)
+
+					if _, err := os.Stat(singBoxPath); err != nil {
+						fmt.Printf("Pre-flight check failed: Sing-box executable not found at %s\n", singBoxPath)
+						os.Exit(1)
+					}
+
+					envPath := filepath.Join(baseDir, ".env")
+					if _, err := os.Stat(envPath); err != nil {
+						fmt.Printf("Pre-flight check failed: Environment file not found at %s\n", envPath)
+						os.Exit(1)
+					}
+
+					var tplPath = *configPath
+					if !filepath.IsAbs(tplPath) {
+						tplPath = filepath.Join(baseDir, tplPath)
+					}
+					if _, err := os.Stat(tplPath); err != nil {
+						fmt.Printf("Pre-flight check failed: Template file not found at %s\n", tplPath)
 						os.Exit(1)
 					}
 				}
-			}
 
-			fmt.Printf("Service command '%s' executed successfully.\n", svcCmd)
+				err = service.Control(s, svcCmd)
+				if err != nil {
+					if strings.Contains(err.Error(), "Access is denied") || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "requires elevation") {
+						fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
+						os.Exit(1)
+					}
+
+					fmt.Fprintf(os.Stderr, "Failed to execute service command '%s': %v\n", svcCmd, err)
+					os.Exit(1)
+				}
+
+				if svcCmd == "start" {
+					time.Sleep(2 * time.Second)
+					data, err := os.ReadFile(errorLogFilePath)
+					if err == nil && len(data) > 0 {
+						lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+						recentErrors := ""
+						for i := len(lines) - 1; i >= 0 && i >= len(lines)-5; i-- {
+							recentErrors = lines[i] + "\n" + recentErrors
+						}
+						if len(strings.TrimSpace(recentErrors)) > 0 {
+							fmt.Printf("Service command 'start' executed, but errors occurred shortly after:\n%s\n", recentErrors)
+							os.Exit(1)
+						}
+					}
+				}
+
+				fmt.Printf("Service command '%s' executed successfully.\n", svcCmd)
+			}
 			return
 		}
 
