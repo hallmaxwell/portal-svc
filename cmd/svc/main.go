@@ -344,7 +344,7 @@ Service Commands:
   uninstall   Remove Service
 
 Flags:
-      --config string   Path to dock template config (default "dock_config.tmpl.json")
+      --config string   Path to dock template config (default "templates/dock_config.tmpl.json")
   -h, --help            help for dock`)
 }
 
@@ -355,7 +355,7 @@ Usage:
   portal-svc transit [flags]
 
 Flags:
-      --config string   Path to transit template config (default "transit_config.tmpl.json")
+      --config string   Path to transit template config (default "templates/transit_config.tmpl.json")
   -h, --help            help for transit`)
 }
 
@@ -518,7 +518,7 @@ func main() {
 	if cmd == "transit" {
 		transitCmd := flag.NewFlagSet("transit", flag.ContinueOnError)
 		transitCmd.Usage = printTransitUsage
-		configPath := transitCmd.String("config", "transit_config.tmpl.json", "Path to transit template config")
+		configPath := transitCmd.String("config", "templates/transit_config.tmpl.json", "Path to transit template config")
 
 		err := transitCmd.Parse(os.Args[2:])
 		if err == flag.ErrHelp {
@@ -534,7 +534,7 @@ func main() {
 	if cmd == "dock" {
 		dockCmd := flag.NewFlagSet("dock", flag.ContinueOnError)
 		dockCmd.Usage = printDockUsage
-		configPath := dockCmd.String("config", "dock_config.tmpl.json", "Path to dock template config")
+		configPath := dockCmd.String("config", "templates/dock_config.tmpl.json", "Path to dock template config")
 
 		// Extract flag args vs service args
 		var flagArgs []string
