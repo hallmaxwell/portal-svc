@@ -147,7 +147,7 @@ jobs:
             IFS='/' read -r GOOS GOARCH <<< "$TARGET"
             echo "==== Building for $GOOS-$GOARCH ===="
             
-            DIR_NAME="portal-${TAG}-${GOOS}-${GOARCH}"
+            DIR_NAME="portal-svc-${TAG}-${GOOS}-${GOARCH}"
             mkdir -p "${{ github.workspace }}/portal_out/$DIR_NAME/core"
             
             BIN_NAME="portal-svc"
