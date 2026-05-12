@@ -83,7 +83,7 @@ func RunMeElevated() error {
 	if len(os.Args) > 1 {
 		var quotedArgs []string
 		for _, arg := range os.Args[1:] {
-			quotedArgs = append(quotedArgs, "\""+arg+"\"")
+			quotedArgs = append(quotedArgs, syscall.EscapeArg(arg))
 		}
 		args = strings.Join(quotedArgs, " ")
 	}
