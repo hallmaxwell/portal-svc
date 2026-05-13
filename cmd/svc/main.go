@@ -581,39 +581,11 @@ func main() {
 		}
 
 		if len(svcArgs) > 0 {
-			// Pre-flight check: see if ANY command requires elevation
-			needsElevation := false
+			// Do pre-flight checks before attempting elevation so errors are visible in the current console
 			for _, svcCmd := range svcArgs {
-				if svcCmd == "install" || svcCmd == "start" || svcCmd == "stop" || svcCmd == "uninstall" || svcCmd == "restart" {
-					needsElevation = true
-					break
-				}
-			}
-
-			if needsElevation && !util.IsAdmin() {
-				fmt.Println("Elevated privileges required for service command(s). Attempting to elevate...")
-				err := util.RunMeElevated()
-				if err != nil {
-					if strings.Contains(err.Error(), "elevated process exited with code") {
-						// The elevated child process failed, and it likely already printed its own error.
-						os.Exit(1)
-					}
-					fmt.Fprintf(os.Stderr, "Failed to elevate privileges: %v\n", err)
-					fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
-					os.Exit(1)
-				}
-				// The elevated child process executed everything successfully.
-				return
-			}
-
-			for _, svcCmd := range svcArgs {
-				if svcCmd == "install" || svcCmd == "start" {
+				if svcCmd == "start" || svcCmd == "restart" {
 					exe, _ := os.Executable()
 					baseDir := filepath.Dir(exe)
-
-					// Initialize paths for log reading
-					logsDir := filepath.Join(baseDir, "logs")
-					errorLogFilePath = filepath.Join(logsDir, "error.log")
 
 					singBoxBin := "sing-box"
 					if runtime.GOOS == "windows" {
@@ -640,6 +612,42 @@ func main() {
 						fmt.Printf("Pre-flight check failed: Template file not found at %s\n", tplPath)
 						os.Exit(1)
 					}
+				}
+			}
+
+			// Pre-flight check: see if ANY command requires elevation
+			needsElevation := false
+			for _, svcCmd := range svcArgs {
+				if svcCmd == "install" || svcCmd == "start" || svcCmd == "stop" || svcCmd == "uninstall" || svcCmd == "restart" {
+					needsElevation = true
+					break
+				}
+			}
+
+			if needsElevation && !util.IsAdmin() {
+				fmt.Println("Elevated privileges required for service command(s). Attempting to elevate...")
+				err := util.RunMeElevated()
+				if err != nil {
+					if strings.Contains(err.Error(), "elevated process exited with code") {
+						// The elevated child process failed, and it likely already printed its own error.
+						os.Exit(1)
+					}
+					fmt.Fprintf(os.Stderr, "Failed to elevate privileges: %v\n", err)
+					fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
+					os.Exit(1)
+				}
+				// The elevated child process executed everything successfully.
+				return
+			}
+
+			for _, svcCmd := range svcArgs {
+				if svcCmd == "install" || svcCmd == "start" || svcCmd == "restart" {
+					exe, _ := os.Executable()
+					baseDir := filepath.Dir(exe)
+
+					// Initialize paths for log reading
+					logsDir := filepath.Join(baseDir, "logs")
+					errorLogFilePath = filepath.Join(logsDir, "error.log")
 				}
 
 				err = service.Control(s, svcCmd)
