@@ -4,11 +4,13 @@ package util
 
 import (
 	"fmt"
+	"golang.org/x/sys/windows"
+	"io"
 	"os"
 	"strings"
 	"syscall"
+	"time"
 	"unsafe"
-	"golang.org/x/sys/windows"
 )
 
 // IsAdmin checks if the current user has Administrator privileges.
@@ -79,14 +81,24 @@ func RunMeElevated() error {
 		return err
 	}
 
+	tmpFile, err := os.CreateTemp("", "elevated-*.log")
+	if err != nil {
+		return err
+	}
+	tmpName := tmpFile.Name()
+	tmpFile.Close()
+	defer os.Remove(tmpName)
+
 	var args string
+	var quotedArgs []string
+	quotedArgs = append(quotedArgs, syscall.EscapeArg("--elevated-out="+tmpName))
+
 	if len(os.Args) > 1 {
-		var quotedArgs []string
 		for _, arg := range os.Args[1:] {
 			quotedArgs = append(quotedArgs, syscall.EscapeArg(arg))
 		}
-		args = strings.Join(quotedArgs, " ")
 	}
+	args = strings.Join(quotedArgs, " ")
 
 	var argsPtr *uint16
 	if args != "" {
@@ -118,7 +130,43 @@ func RunMeElevated() error {
 	}
 
 	if sei.HProcess != 0 {
+		done := make(chan struct{})
+		readerDone := make(chan struct{})
+		go func() {
+			defer close(readerDone)
+			f, err := os.Open(tmpName)
+			if err != nil {
+				return
+			}
+			defer f.Close()
+			buf := make([]byte, 1024)
+			for {
+				select {
+				case <-done:
+					for {
+						n, _ := f.Read(buf)
+						if n == 0 {
+							break
+						}
+						os.Stdout.Write(buf[:n])
+					}
+					return
+				default:
+					n, err := f.Read(buf)
+					if n > 0 {
+						os.Stdout.Write(buf[:n])
+					} else if err == io.EOF {
+						time.Sleep(50 * time.Millisecond)
+					} else {
+						time.Sleep(50 * time.Millisecond)
+					}
+				}
+			}
+		}()
+
 		syscall.WaitForSingleObject(sei.HProcess, syscall.INFINITE)
+		close(done)
+		<-readerDone
 
 		var exitCode uint32
 		err = syscall.GetExitCodeProcess(sei.HProcess, &exitCode)

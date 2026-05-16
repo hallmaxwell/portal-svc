@@ -492,6 +492,23 @@ func handleLogsCmd(args []string) {
 	}
 }
 
+func init() {
+	for i, arg := range os.Args {
+		if strings.HasPrefix(arg, "--elevated-out=") {
+			outFile := strings.TrimPrefix(arg, "--elevated-out=")
+			f, err := os.OpenFile(outFile, os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0600)
+			if err == nil {
+				os.Stdout = f
+				os.Stderr = f
+				log.SetOutput(f)
+				// We don't close it, intentionally letting it remain open
+			}
+			os.Args = append(os.Args[:i], os.Args[i+1:]...)
+			break
+		}
+	}
+}
+
 func main() {
 	if len(os.Args) < 2 {
 		printMainUsage()
