@@ -13,6 +13,7 @@ import (
 	"sync"
 	"time"
 
+	"hawego/portal/templates"
 	"hawego/portal/util"
 
 	"github.com/kardianos/service"
@@ -371,6 +372,82 @@ Flags:
   -h, --help            help for logs`)
 }
 
+func printInitUsage() {
+	fmt.Println(`Initialize the portal-svc environment and release default templates
+
+Usage:
+  portal-svc init [dock|transit] [flags]
+
+Flags:
+  -h, --help            help for init`)
+}
+
+func handleInitCmd(args []string) {
+	initCmd := flag.NewFlagSet("init", flag.ContinueOnError)
+	initCmd.Usage = printInitUsage
+
+	err := initCmd.Parse(args)
+	if err == flag.ErrHelp {
+		os.Exit(0)
+	} else if err != nil {
+		os.Exit(1)
+	}
+
+	if initCmd.NArg() < 1 {
+		fmt.Println("Error: missing required argument [dock|transit]")
+		printInitUsage()
+		os.Exit(1)
+	}
+
+	target := initCmd.Arg(0)
+	if target != "dock" && target != "transit" {
+		fmt.Printf("Error: invalid target '%s', expected 'dock' or 'transit'\n", target)
+		os.Exit(1)
+	}
+
+	baseDir, err := os.Getwd()
+	if err != nil {
+		baseDir = "."
+	}
+	envPath := filepath.Join(baseDir, ".env")
+	envMap, _ := util.LoadEnvMap(envPath)
+
+	portalEnv := envMap["PORTAL_ENV"]
+	if portalEnv == "" {
+		if target == "dock" {
+			portalEnv = "local"
+		} else {
+			portalEnv = "cloud"
+		}
+	}
+
+	fmt.Printf("Initializing for %s in %s environment...\n", target, portalEnv)
+
+	tmplName := target + "_config.tmpl.json"
+	tmplData, err := templates.FS.ReadFile(tmplName)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Error: could not find embedded template '%s': %v\n", tmplName, err)
+		os.Exit(1)
+	}
+
+	tmplDir := filepath.Join(baseDir, "templates")
+	if err := os.MkdirAll(tmplDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: could not create templates directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	outPath := filepath.Join(tmplDir, tmplName)
+	if _, err := os.Stat(outPath); err == nil {
+		fmt.Printf("Template '%s' already exists in '%s'. Skipping.\n", tmplName, tmplDir)
+	} else {
+		if err := os.WriteFile(outPath, tmplData, 0644); err != nil {
+			fmt.Fprintf(os.Stderr, "Error: could not write template file: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Successfully released '%s' to '%s'.\n", tmplName, tmplDir)
+	}
+}
+
 func printRenderUsage() {
 	fmt.Println(`Render a configuration template with environment variables
 
@@ -527,6 +604,11 @@ func main() {
 		return
 	}
 
+	if cmd == "init" {
+		handleInitCmd(os.Args[2:])
+		return
+	}
+
 	if cmd == "render" {
 		handleRenderCmd(os.Args[2:])
 		return
@@ -615,20 +697,6 @@ func main() {
 						os.Exit(1)
 					}
 
-					envPath := filepath.Join(baseDir, ".env")
-					if _, err := os.Stat(envPath); err != nil {
-						fmt.Printf("Pre-flight check failed: Environment file not found at %s\n", envPath)
-						os.Exit(1)
-					}
-
-					var tplPath = *configPath
-					if !filepath.IsAbs(tplPath) {
-						tplPath = filepath.Join(baseDir, tplPath)
-					}
-					if _, err := os.Stat(tplPath); err != nil {
-						fmt.Printf("Pre-flight check failed: Template file not found at %s\n", tplPath)
-						os.Exit(1)
-					}
 				}
 			}
 
