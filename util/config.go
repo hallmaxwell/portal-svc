@@ -4,7 +4,10 @@ import (
 	"encoding/json"
 	"fmt"
 	"os"
+	"path/filepath"
 	"strings"
+
+	"hawego/portal/templates"
 )
 
 // RenderConfigTemplate reads a template file, replaces placeholders with values
@@ -12,7 +15,12 @@ import (
 func RenderConfigTemplate(templatePath string, envMap map[string]string) (string, error) {
 	tempData, err := os.ReadFile(templatePath)
 	if err != nil {
-		return "", fmt.Errorf("failed to read config template: %v", err)
+		// Fallback to embedded templates
+		baseName := filepath.Base(templatePath)
+		tempData, err = templates.FS.ReadFile(baseName)
+		if err != nil {
+			return "", fmt.Errorf("failed to read config template from disk and embedded fs: %v", err)
+		}
 	}
 
 	content := string(tempData)
