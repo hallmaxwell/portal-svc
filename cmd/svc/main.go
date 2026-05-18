@@ -320,6 +320,7 @@ func printMainUsage() {
   portal-svc [command]
 
 Available Commands:
+  init        Initialize the portal-svc environment and release default templates
   dock        Sing-Box background service with auto-recovery
   transit     Launch a transit node
   logs        View service logs
