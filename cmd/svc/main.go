@@ -170,7 +170,6 @@ func sysLogError(msg string, printToStdout bool) {
 }
 
 type singBoxLogWriter struct {
-	isStderr      bool
 	printToStdout bool
 }
 
@@ -296,7 +295,7 @@ type dockProgram struct {
 	templatePath string
 }
 
-func (p *dockProgram) Start(s service.Service) error {
+func (p *dockProgram) Start(_ service.Service) error {
 	p.exit = make(chan struct{})
 	go p.run()
 	go p.monitorNetwork()
@@ -356,8 +355,8 @@ func (p *dockProgram) run() {
 
 	p.cmd = exec.Command(singBoxPath, "run", "-c", p.outPath)
 	p.cmd.Dir = baseDir
-	p.cmd.Stdout = &singBoxLogWriter{isStderr: false, printToStdout: false}
-	p.cmd.Stderr = &singBoxLogWriter{isStderr: true, printToStdout: false}
+	p.cmd.Stdout = &singBoxLogWriter{printToStdout: false}
+	p.cmd.Stderr = &singBoxLogWriter{printToStdout: false}
 	if err := p.cmd.Start(); err != nil {
 		sysLogError(fmt.Sprintf("Failed to start sing-box: %v", err), false)
 		p.cleanup()
@@ -394,11 +393,14 @@ func (p *dockProgram) cleanup() {
 
 func (p *dockProgram) monitorNetwork() {
 	failCount := 0
+	ticker := time.NewTicker(10 * time.Second)
+	defer ticker.Stop()
+
 	for {
 		select {
 		case <-p.exit:
 			return
-		case <-time.After(10 * time.Second):
+		case <-ticker.C:
 			conn, err := net.DialTimeout("tcp", "8.8.8.8:53", 3*time.Second)
 			if err != nil {
 				failCount++
@@ -418,7 +420,7 @@ func (p *dockProgram) monitorNetwork() {
 	}
 }
 
-func (p *dockProgram) Stop(s service.Service) error {
+func (p *dockProgram) Stop(_ service.Service) error {
 	p.stopping.Store(true)
 	p.stopOnce.Do(func() {
 		if p.exit != nil {
@@ -452,8 +454,8 @@ func runTransit(templatePath string) {
 	}
 
 	cmd := exec.Command("sing-box", "run", "-c", outPath)
-	cmd.Stdout = &singBoxLogWriter{isStderr: false, printToStdout: true}
-	cmd.Stderr = &singBoxLogWriter{isStderr: true, printToStdout: true}
+	cmd.Stdout = &singBoxLogWriter{printToStdout: true}
+	cmd.Stderr = &singBoxLogWriter{printToStdout: true}
 
 	sysLogInfo("Transit Node Launching...", true)
 

@@ -13,42 +13,36 @@ func TestSingBoxLogWriter(t *testing.T) {
 	tests := []struct {
 		name       string
 		input      string
-		isStderr   bool
 		wantLevel  string
 		wantStderr bool
 	}{
 		{
 			name:       "Normal info log",
 			input:      "INFO[0000] sing-box started",
-			isStderr:   false,
 			wantLevel:  "info",
 			wantStderr: false,
 		},
 		{
 			name:       "Error keyword in log",
 			input:      "ERROR[0001] connection failed",
-			isStderr:   false,
 			wantLevel:  "error",
 			wantStderr: false,
 		},
 		{
 			name:       "Warning keyword in log",
 			input:      "WARNING[0001] connection failed",
-			isStderr:   false,
 			wantLevel:  "info",
 			wantStderr: false,
 		},
 		{
 			name:       "Fatal keyword in log",
 			input:      "FATAL[0002] config invalid",
-			isStderr:   false,
 			wantLevel:  "error",
 			wantStderr: false,
 		},
 		{
 			name:       "Stderr stream",
 			input:      "some unexpected output",
-			isStderr:   true,
 			wantLevel:  "info",
 			wantStderr: false,
 		},
@@ -67,7 +61,7 @@ func TestSingBoxLogWriter(t *testing.T) {
 			r, w, _ := os.Pipe()
 			os.Stderr = w
 
-			writer := &singBoxLogWriter{isStderr: tt.isStderr, printToStdout: false}
+			writer := &singBoxLogWriter{printToStdout: false}
 
 			initLogFiles()
 
