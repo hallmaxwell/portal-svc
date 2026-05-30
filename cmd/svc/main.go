@@ -11,6 +11,7 @@ import (
 	"runtime"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
 	"hawego/portal/templates"
@@ -19,6 +20,18 @@ import (
 	"github.com/kardianos/service"
 	"github.com/nxadm/tail"
 	"gopkg.in/natefinch/lumberjack.v2"
+)
+
+const (
+	defaultDockConfig    = "templates/dock_config.tmpl.json"
+	defaultTransitConfig = "templates/transit_config.tmpl.json"
+
+	dockTempConfig    = "dock.config.run.json"
+	transitTempConfig = "transit.config.run.json"
+
+	serviceName        = "PortalDaemon"
+	serviceDisplayName = "Portal Daemon"
+	serviceDescription = "Portal Daemon background service with auto-recovery"
 )
 
 var (
@@ -30,17 +43,56 @@ var (
 	logMu       sync.Mutex
 )
 
-func initLogFiles() {
+func executableDir() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		exe = "."
+		return "", fmt.Errorf("failed to get executable path: %w", err)
 	}
-	baseDir := filepath.Dir(exe)
+	return filepath.Dir(exe), nil
+}
+
+func singBoxBinaryName() string {
+	if runtime.GOOS == "windows" {
+		return "sing-box.exe"
+	}
+	return "sing-box"
+}
+
+func bundledSingBoxPath(baseDir string) string {
+	return filepath.Join(baseDir, "core", singBoxBinaryName())
+}
+
+func processEnvMap() map[string]string {
+	envMap := make(map[string]string)
+	for _, env := range os.Environ() {
+		pair := strings.SplitN(env, "=", 2)
+		if len(pair) == 2 {
+			envMap[pair[0]] = pair[1]
+		}
+	}
+	return envMap
+}
+
+func initLogPaths() error {
+	baseDir, err := executableDir()
+	if err != nil {
+		return err
+	}
 	logsDir := filepath.Join(baseDir, "logs")
-	os.MkdirAll(logsDir, 0700)
 
 	infoLogFilePath = filepath.Join(logsDir, "access.log")
 	errorLogFilePath = filepath.Join(logsDir, "error.log")
+	return nil
+}
+
+func initLogFiles() error {
+	if err := initLogPaths(); err != nil {
+		return err
+	}
+
+	if err := os.MkdirAll(filepath.Dir(infoLogFilePath), 0700); err != nil {
+		return fmt.Errorf("failed to create logs directory: %w", err)
+	}
 
 	infoLogger = &lumberjack.Logger{
 		Filename:   infoLogFilePath,
@@ -59,12 +111,22 @@ func initLogFiles() {
 	}
 
 	// Always clear logs on start
-	_ = infoLogger.Rotate()
-	_ = errorLogger.Rotate()
+	if err := infoLogger.Rotate(); err != nil {
+		return fmt.Errorf("failed to rotate access log: %w", err)
+	}
+	if err := errorLogger.Rotate(); err != nil {
+		return fmt.Errorf("failed to rotate error log: %w", err)
+	}
 
 	// Ensure empty logs exist
-	os.WriteFile(infoLogFilePath, []byte(""), 0600)
-	os.WriteFile(errorLogFilePath, []byte(""), 0600)
+	if err := os.WriteFile(infoLogFilePath, []byte(""), 0600); err != nil {
+		return fmt.Errorf("failed to initialize access log: %w", err)
+	}
+	if err := os.WriteFile(errorLogFilePath, []byte(""), 0600); err != nil {
+		return fmt.Errorf("failed to initialize error log: %w", err)
+	}
+
+	return nil
 }
 
 func writeLog(level, prefix, msg string, printToStdout bool) {
@@ -78,15 +140,21 @@ func writeLog(level, prefix, msg string, printToStdout bool) {
 	timestamp := time.Now().Format("2006/01/02 15:04:05")
 	logLine := fmt.Sprintf("%s %s %s\n", timestamp, prefix, msg)
 
-	infoLogger.Write([]byte(logLine))
+	if _, err := infoLogger.Write([]byte(logLine)); err != nil && printToStdout {
+		fmt.Fprintf(os.Stderr, "failed to write access log: %v\n", err)
+	}
 
 	if level == "error" {
-		errorLogger.Write([]byte(logLine))
+		if _, err := errorLogger.Write([]byte(logLine)); err != nil && printToStdout {
+			fmt.Fprintf(os.Stderr, "failed to write error log: %v\n", err)
+		}
 	}
 
 	if printToStdout {
 		if level == "error" {
-			os.Stderr.WriteString(prefix + " " + msg + "\n")
+			if _, err := os.Stderr.WriteString(prefix + " " + msg + "\n"); err != nil {
+				return
+			}
 		} else {
 			fmt.Println(prefix + " " + msg)
 		}
@@ -121,11 +189,84 @@ func (w *singBoxLogWriter) Write(p []byte) (n int, err error) {
 }
 
 func killExistingSingBox() {
+	var err error
 	if runtime.GOOS == "windows" {
-		_ = exec.Command("taskkill", "/F", "/T", "/IM", "sing-box.exe").Run()
+		err = exec.Command("taskkill", "/F", "/T", "/IM", "sing-box.exe").Run()
 	} else {
-		_ = exec.Command("killall", "-9", "sing-box").Run()
+		err = exec.Command("killall", "-9", "sing-box").Run()
 	}
+	if err != nil {
+		sysLogInfo(fmt.Sprintf("No existing sing-box process stopped: %v", err), false)
+	}
+}
+
+func isDockServiceCommand(cmd string) bool {
+	switch cmd {
+	case "install", "start", "stop", "restart", "uninstall":
+		return true
+	default:
+		return false
+	}
+}
+
+func serviceCommandNeedsElevation(cmd string) bool {
+	return isDockServiceCommand(cmd)
+}
+
+func serviceCommandNeedsSingBox(cmd string) bool {
+	return cmd == "start" || cmd == "restart"
+}
+
+func validateDockServiceCommands(commands []string) error {
+	for _, cmd := range commands {
+		if !isDockServiceCommand(cmd) {
+			return fmt.Errorf("invalid service command %q", cmd)
+		}
+	}
+	return nil
+}
+
+func anyDockServiceCommand(commands []string, predicate func(string) bool) bool {
+	for _, cmd := range commands {
+		if predicate(cmd) {
+			return true
+		}
+	}
+	return false
+}
+
+func ensureBundledSingBox(baseDir string) error {
+	singBoxPath := bundledSingBoxPath(baseDir)
+	if _, err := os.Stat(singBoxPath); err != nil {
+		return fmt.Errorf("sing-box executable not found at %s", singBoxPath)
+	}
+	return nil
+}
+
+func recentNonBlankLines(path string, maxLines int) (string, error) {
+	if maxLines <= 0 {
+		return "", nil
+	}
+
+	data, err := os.ReadFile(path)
+	if err != nil {
+		return "", err
+	}
+
+	lines := strings.Split(strings.TrimSpace(string(data)), "\n")
+	start := 0
+	if len(lines) > maxLines {
+		start = len(lines) - maxLines
+	}
+
+	var b strings.Builder
+	for i := start; i < len(lines); i++ {
+		if util.IsNotBlank(lines[i]) {
+			b.WriteString(lines[i])
+			b.WriteByte('\n')
+		}
+	}
+	return b.String(), nil
 }
 
 func recordSystemStatus() {
@@ -150,7 +291,8 @@ type dockProgram struct {
 	cmd          *exec.Cmd
 	outPath      string
 	exit         chan struct{}
-	stopping     bool
+	stopping     atomic.Bool
+	stopOnce     sync.Once
 	templatePath string
 }
 
@@ -162,39 +304,36 @@ func (p *dockProgram) Start(s service.Service) error {
 }
 
 func (p *dockProgram) run() {
-	initLogFiles()
+	if err := initLogFiles(); err != nil {
+		log.Printf("Failed to initialize log files: %v", err)
+		os.Exit(1)
+	}
 	sysLogInfo("Starting service run loop...", false)
 
-	exe, err := os.Executable()
+	baseDir, err := executableDir()
 	if err != nil {
 		sysLogError(fmt.Sprintf("Failed to get executable path: %v", err), false)
-		return
+		os.Exit(1)
 	}
-	baseDir := filepath.Dir(exe)
 
-	singBoxBin := "sing-box"
-	if runtime.GOOS == "windows" {
-		singBoxBin = "sing-box.exe"
-	}
-	singBoxPath := filepath.Join(baseDir, "core", singBoxBin)
-
-	if _, err := os.Stat(singBoxPath); err != nil {
-		sysLogError(fmt.Sprintf("Dependencies not found: %s", singBoxPath), false)
-		return
+	singBoxPath := bundledSingBoxPath(baseDir)
+	if err := ensureBundledSingBox(baseDir); err != nil {
+		sysLogError(fmt.Sprintf("Dependencies not found: %v", err), false)
+		os.Exit(1)
 	}
 
 	envPath := filepath.Join(baseDir, ".env")
-	p.outPath = filepath.Join(os.TempDir(), "dock.config.run.json")
+	p.outPath = filepath.Join(os.TempDir(), dockTempConfig)
 
 	if _, err := os.Stat(envPath); err != nil {
 		sysLogError("Environment file not found", false)
-		return
+		os.Exit(1)
 	}
 
 	envMap, err := util.LoadEnvMap(envPath)
 	if err != nil {
 		sysLogError(fmt.Sprintf("Failed to open environment file: %v", err), false)
-		return
+		os.Exit(1)
 	}
 
 	var tplPath = p.templatePath
@@ -205,10 +344,13 @@ func (p *dockProgram) run() {
 	content, err := util.RenderConfigTemplate(tplPath, envMap)
 	if err != nil {
 		sysLogError(fmt.Sprintf("Failed to render config template: %v", err), false)
-		return
+		os.Exit(1)
 	}
 
-	os.WriteFile(p.outPath, []byte(content), 0600)
+	if err := os.WriteFile(p.outPath, []byte(content), 0600); err != nil {
+		sysLogError(fmt.Sprintf("Failed to write rendered config: %v", err), false)
+		os.Exit(1)
+	}
 
 	killExistingSingBox()
 
@@ -216,13 +358,22 @@ func (p *dockProgram) run() {
 	p.cmd.Dir = baseDir
 	p.cmd.Stdout = &singBoxLogWriter{isStderr: false, printToStdout: false}
 	p.cmd.Stderr = &singBoxLogWriter{isStderr: true, printToStdout: false}
-	p.cmd.Start()
-	p.cmd.Wait()
+	if err := p.cmd.Start(); err != nil {
+		sysLogError(fmt.Sprintf("Failed to start sing-box: %v", err), false)
+		p.cleanup()
+		os.Exit(1)
+	}
+
+	waitErr := p.cmd.Wait()
 
 	p.cleanup()
 
-	if !p.stopping {
-		sysLogError("Sing-box process exited unexpectedly", false)
+	if !p.stopping.Load() {
+		if waitErr != nil {
+			sysLogError(fmt.Sprintf("Sing-box process exited unexpectedly: %v", waitErr), false)
+		} else {
+			sysLogError("Sing-box process exited unexpectedly", false)
+		}
 		recordSystemStatus()
 		os.Exit(1)
 	}
@@ -230,10 +381,14 @@ func (p *dockProgram) run() {
 
 func (p *dockProgram) cleanup() {
 	if p.cmd != nil && p.cmd.Process != nil {
-		_ = p.cmd.Process.Kill()
+		if err := p.cmd.Process.Kill(); err != nil && !strings.Contains(strings.ToLower(err.Error()), "process already finished") {
+			sysLogError(fmt.Sprintf("Failed to kill sing-box process during cleanup: %v", err), false)
+		}
 	}
 	if p.outPath != "" {
-		_ = os.Remove(p.outPath)
+		if err := os.Remove(p.outPath); err != nil && !os.IsNotExist(err) {
+			sysLogError(fmt.Sprintf("Failed to remove temporary config: %v", err), false)
+		}
 	}
 }
 
@@ -255,15 +410,21 @@ func (p *dockProgram) monitorNetwork() {
 				}
 			} else {
 				failCount = 0
-				conn.Close()
+				if err := conn.Close(); err != nil {
+					sysLogError(fmt.Sprintf("Failed to close network health check connection: %v", err), false)
+				}
 			}
 		}
 	}
 }
 
 func (p *dockProgram) Stop(s service.Service) error {
-	p.stopping = true
-	close(p.exit)
+	p.stopping.Store(true)
+	p.stopOnce.Do(func() {
+		if p.exit != nil {
+			close(p.exit)
+		}
+	})
 	p.cleanup()
 	return nil
 }
@@ -272,24 +433,23 @@ func (p *dockProgram) Stop(s service.Service) error {
 // Transit Logic
 // ==========================================
 func runTransit(templatePath string) {
-	initLogFiles()
-
-	envMap := make(map[string]string)
-	for _, env := range os.Environ() {
-		pair := strings.SplitN(env, "=", 2)
-		if len(pair) == 2 {
-			envMap[pair[0]] = pair[1]
-		}
+	if err := initLogFiles(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize log files: %v\n", err)
+		os.Exit(1)
 	}
 
+	envMap := processEnvMap()
 	content, err := util.RenderConfigTemplate(templatePath, envMap)
 	if err != nil {
 		sysLogError(fmt.Sprintf("Failed to render config template: %v", err), true)
 		os.Exit(1)
 	}
 
-	outPath := filepath.Join(os.TempDir(), "transit.config.run.json")
-	os.WriteFile(outPath, []byte(content), 0600)
+	outPath := filepath.Join(os.TempDir(), transitTempConfig)
+	if err := os.WriteFile(outPath, []byte(content), 0600); err != nil {
+		sysLogError(fmt.Sprintf("Failed to write rendered config: %v", err), true)
+		os.Exit(1)
+	}
 
 	cmd := exec.Command("sing-box", "run", "-c", outPath)
 	cmd.Stdout = &singBoxLogWriter{isStderr: false, printToStdout: true}
@@ -304,11 +464,17 @@ func runTransit(templatePath string) {
 
 	go func() {
 		time.Sleep(2 * time.Second)
-		os.Remove(outPath)
-		sysLogInfo("transit.config.run.json cleared, transit node is running.", true)
+		if err := os.Remove(outPath); err != nil && !os.IsNotExist(err) {
+			sysLogError(fmt.Sprintf("Failed to remove %s: %v", transitTempConfig, err), true)
+			return
+		}
+		sysLogInfo(fmt.Sprintf("%s cleared, transit node is running.", transitTempConfig), true)
 	}()
 
-	cmd.Wait()
+	if err := cmd.Wait(); err != nil {
+		sysLogError(fmt.Sprintf("Transit node exited with error: %v", err), true)
+		os.Exit(1)
+	}
 }
 
 // ==========================================
@@ -411,7 +577,11 @@ func handleInitCmd(args []string) {
 		baseDir = "."
 	}
 	envPath := filepath.Join(baseDir, ".env")
-	envMap, _ := util.LoadEnvMap(envPath)
+	envMap, err := util.LoadEnvMap(envPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Warning: failed to load environment file: %v\n", err)
+		envMap = make(map[string]string)
+	}
 
 	portalEnv := envMap["PORTAL_ENV"]
 	if portalEnv == "" {
@@ -440,6 +610,9 @@ func handleInitCmd(args []string) {
 	outPath := filepath.Join(tmplDir, tmplName)
 	if _, err := os.Stat(outPath); err == nil {
 		fmt.Printf("Template '%s' already exists in '%s'. Skipping.\n", tmplName, tmplDir)
+	} else if !os.IsNotExist(err) {
+		fmt.Fprintf(os.Stderr, "Error: could not inspect template file '%s': %v\n", outPath, err)
+		os.Exit(1)
 	} else {
 		if err := os.WriteFile(outPath, tmplData, 0644); err != nil {
 			fmt.Fprintf(os.Stderr, "Error: could not write template file: %v\n", err)
@@ -482,14 +655,7 @@ func handleRenderCmd(args []string) {
 		os.Exit(1)
 	}
 
-	envMap := make(map[string]string)
-	for _, env := range os.Environ() {
-		pair := strings.SplitN(env, "=", 2)
-		if len(pair) == 2 {
-			envMap[pair[0]] = pair[1]
-		}
-	}
-
+	envMap := processEnvMap()
 	content, err := util.RenderConfigTemplate(*configPath, envMap)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Failed to render template: %v\n", err)
@@ -513,6 +679,11 @@ func handleRenderCmd(args []string) {
 }
 
 func handleLogsCmd(args []string) {
+	if err := initLogPaths(); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to initialize log paths: %v\n", err)
+		os.Exit(1)
+	}
+
 	logsCmd := flag.NewFlagSet("logs", flag.ContinueOnError)
 	logsCmd.Usage = printLogsUsage
 	nLines := logsCmd.Int("n", 100, "")
@@ -522,6 +693,10 @@ func handleLogsCmd(args []string) {
 	if err == flag.ErrHelp {
 		os.Exit(0)
 	} else if err != nil {
+		os.Exit(1)
+	}
+	if *nLines < 0 {
+		fmt.Fprintln(os.Stderr, "Error: --lines must be greater than or equal to 0")
 		os.Exit(1)
 	}
 
@@ -550,23 +725,166 @@ func handleLogsCmd(args []string) {
 			fmt.Println(line.Text)
 		}
 	} else {
-		data, err := os.ReadFile(targetLogFile)
+		recentLogs, err := recentNonBlankLines(targetLogFile, *nLines)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to read log file: %v\n", err)
 			os.Exit(1)
 		}
 
-		lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-		start := 0
-		if len(lines) > *nLines {
-			start = len(lines) - *nLines
+		if util.IsNotBlank(recentLogs) {
+			fmt.Print(recentLogs)
+		}
+	}
+}
+
+func handleTransitCmd(args []string) {
+	transitCmd := flag.NewFlagSet("transit", flag.ContinueOnError)
+	transitCmd.Usage = printTransitUsage
+	configPath := transitCmd.String("config", defaultTransitConfig, "Path to transit template config")
+
+	err := transitCmd.Parse(args)
+	if err == flag.ErrHelp {
+		os.Exit(0)
+	} else if err != nil {
+		os.Exit(1)
+	}
+
+	runTransit(*configPath)
+}
+
+func splitDockArgs(args []string) (flagArgs []string, svcArgs []string) {
+	for i := 0; i < len(args); i++ {
+		arg := args[i]
+		if strings.HasPrefix(arg, "-") {
+			flagArgs = append(flagArgs, arg)
+			// Consume value if not boolean flag.
+			if i+1 < len(args) && !strings.HasPrefix(args[i+1], "-") {
+				flagArgs = append(flagArgs, args[i+1])
+				i++
+			}
+		} else {
+			svcArgs = append(svcArgs, arg)
+		}
+	}
+	return flagArgs, svcArgs
+}
+
+func handleDockCmd(args []string) {
+	dockCmd := flag.NewFlagSet("dock", flag.ContinueOnError)
+	dockCmd.Usage = printDockUsage
+	configPath := dockCmd.String("config", defaultDockConfig, "Path to dock template config")
+
+	flagArgs, svcArgs := splitDockArgs(args)
+
+	err := dockCmd.Parse(flagArgs)
+	if err == flag.ErrHelp {
+		os.Exit(0)
+	} else if err != nil {
+		os.Exit(1)
+	}
+
+	if err := validateDockServiceCommands(svcArgs); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: %v\n", err)
+		printDockUsage()
+		os.Exit(1)
+	}
+
+	svcConfig := &service.Config{
+		Name:        serviceName,
+		DisplayName: serviceDisplayName,
+		Description: serviceDescription,
+		Option: service.KeyValue{
+			"OnFailure":              "restart",
+			"OnFailureDelayDuration": "10s",
+			"OnFailureResetPeriod":   600,
+		},
+		Arguments: append([]string{"dock"}, flagArgs...),
+	}
+
+	prg := &dockProgram{templatePath: *configPath}
+	s, err := service.New(prg, svcConfig)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create service: %v\n", err)
+		os.Exit(1)
+	}
+
+	if len(svcArgs) > 0 {
+		runDockServiceCommands(s, svcArgs)
+		return
+	}
+
+	err = s.Run()
+	if err != nil {
+		log.Fatalf("Service runtime error: %v", err)
+	}
+}
+
+func runDockServiceCommands(s service.Service, svcArgs []string) {
+	var baseDir string
+	var err error
+
+	if anyDockServiceCommand(svcArgs, serviceCommandNeedsSingBox) {
+		baseDir, err = executableDir()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get executable path: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	// Do pre-flight checks before attempting elevation so errors are visible in the current console.
+	if anyDockServiceCommand(svcArgs, serviceCommandNeedsSingBox) {
+		if err := ensureBundledSingBox(baseDir); err != nil {
+			fmt.Fprintf(os.Stderr, "Pre-flight check failed: %v\n", err)
+			os.Exit(1)
+		}
+	}
+
+	if anyDockServiceCommand(svcArgs, serviceCommandNeedsElevation) && !util.IsAdmin() {
+		fmt.Println("Elevated privileges required for service command(s). Attempting to elevate...")
+		err := util.RunMeElevated()
+		if err != nil {
+			if strings.Contains(err.Error(), "elevated process exited with code") {
+				// The elevated child process failed, and it likely already printed its own error.
+				os.Exit(1)
+			}
+			fmt.Fprintf(os.Stderr, "Failed to elevate privileges: %v\n", err)
+			fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
+			os.Exit(1)
+		}
+		// The elevated child process executed everything successfully.
+		return
+	}
+
+	for _, svcCmd := range svcArgs {
+		if serviceCommandNeedsSingBox(svcCmd) {
+			logsDir := filepath.Join(baseDir, "logs")
+			errorLogFilePath = filepath.Join(logsDir, "error.log")
 		}
 
-		for i := start; i < len(lines); i++ {
-			if len(strings.TrimSpace(lines[i])) > 0 {
-				fmt.Println(lines[i])
+		err = service.Control(s, svcCmd)
+		if err != nil {
+			if strings.Contains(err.Error(), "Access is denied") || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "requires elevation") {
+				fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
+				os.Exit(1)
+			}
+
+			fmt.Fprintf(os.Stderr, "Failed to execute service command '%s': %v\n", svcCmd, err)
+			os.Exit(1)
+		}
+
+		if serviceCommandNeedsSingBox(svcCmd) {
+			time.Sleep(2 * time.Second)
+			recentErrors, err := recentNonBlankLines(errorLogFilePath, 5)
+			if err != nil && !os.IsNotExist(err) {
+				fmt.Fprintf(os.Stderr, "Warning: failed to read startup error log: %v\n", err)
+			}
+			if err == nil && util.IsNotBlank(recentErrors) {
+				fmt.Printf("Service command '%s' executed, but errors occurred shortly after:\n%s\n", svcCmd, recentErrors)
+				os.Exit(1)
 			}
 		}
+
+		fmt.Printf("Service command '%s' executed successfully.\n", svcCmd)
 	}
 }
 
@@ -580,6 +898,8 @@ func init() {
 				os.Stderr = f
 				log.SetOutput(f)
 				// We don't close it, intentionally letting it remain open
+			} else {
+				fmt.Fprintf(os.Stderr, "Failed to redirect elevated output to %s: %v\n", outFile, err)
 			}
 			os.Args = append(os.Args[:i], os.Args[i+1:]...)
 			break
@@ -616,162 +936,12 @@ func main() {
 	}
 
 	if cmd == "transit" {
-		transitCmd := flag.NewFlagSet("transit", flag.ContinueOnError)
-		transitCmd.Usage = printTransitUsage
-		configPath := transitCmd.String("config", "templates/transit_config.tmpl.json", "Path to transit template config")
-
-		err := transitCmd.Parse(os.Args[2:])
-		if err == flag.ErrHelp {
-			os.Exit(0)
-		} else if err != nil {
-			os.Exit(1)
-		}
-
-		runTransit(*configPath)
+		handleTransitCmd(os.Args[2:])
 		return
 	}
 
 	if cmd == "dock" {
-		dockCmd := flag.NewFlagSet("dock", flag.ContinueOnError)
-		dockCmd.Usage = printDockUsage
-		configPath := dockCmd.String("config", "templates/dock_config.tmpl.json", "Path to dock template config")
-
-		// Extract flag args vs service args
-		var flagArgs []string
-		var svcArgs []string
-
-		for i := 2; i < len(os.Args); i++ {
-			arg := os.Args[i]
-			if strings.HasPrefix(arg, "-") {
-				flagArgs = append(flagArgs, arg)
-				// Consume value if not boolean flag
-				if i+1 < len(os.Args) && !strings.HasPrefix(os.Args[i+1], "-") {
-					flagArgs = append(flagArgs, os.Args[i+1])
-					i++
-				}
-			} else {
-				svcArgs = append(svcArgs, arg)
-			}
-		}
-
-		err := dockCmd.Parse(flagArgs)
-		if err == flag.ErrHelp {
-			os.Exit(0)
-		} else if err != nil {
-			os.Exit(1)
-		}
-
-		svcConfig := &service.Config{
-			Name:        "PortalDaemon",
-			DisplayName: "Portal Daemon",
-			Description: "Portal Daemon background service with auto-recovery",
-			Option: service.KeyValue{
-				"OnFailure":              "restart",
-				"OnFailureDelayDuration": "10s",
-				"OnFailureResetPeriod":   600,
-			},
-			Arguments: append([]string{"dock"}, flagArgs...),
-		}
-
-		prg := &dockProgram{templatePath: *configPath}
-		s, err := service.New(prg, svcConfig)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create service: %v\n", err)
-			os.Exit(1)
-		}
-
-		if len(svcArgs) > 0 {
-			// Do pre-flight checks before attempting elevation so errors are visible in the current console
-			for _, svcCmd := range svcArgs {
-				if svcCmd == "start" || svcCmd == "restart" {
-					exe, _ := os.Executable()
-					baseDir := filepath.Dir(exe)
-
-					singBoxBin := "sing-box"
-					if runtime.GOOS == "windows" {
-						singBoxBin = "sing-box.exe"
-					}
-					singBoxPath := filepath.Join(baseDir, "core", singBoxBin)
-
-					if _, err := os.Stat(singBoxPath); err != nil {
-						fmt.Printf("Pre-flight check failed: Sing-box executable not found at %s\n", singBoxPath)
-						os.Exit(1)
-					}
-
-				}
-			}
-
-			// Pre-flight check: see if ANY command requires elevation
-			needsElevation := false
-			for _, svcCmd := range svcArgs {
-				if svcCmd == "install" || svcCmd == "start" || svcCmd == "stop" || svcCmd == "uninstall" || svcCmd == "restart" {
-					needsElevation = true
-					break
-				}
-			}
-
-			if needsElevation && !util.IsAdmin() {
-				fmt.Println("Elevated privileges required for service command(s). Attempting to elevate...")
-				err := util.RunMeElevated()
-				if err != nil {
-					if strings.Contains(err.Error(), "elevated process exited with code") {
-						// The elevated child process failed, and it likely already printed its own error.
-						os.Exit(1)
-					}
-					fmt.Fprintf(os.Stderr, "Failed to elevate privileges: %v\n", err)
-					fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
-					os.Exit(1)
-				}
-				// The elevated child process executed everything successfully.
-				return
-			}
-
-			for _, svcCmd := range svcArgs {
-				if svcCmd == "install" || svcCmd == "start" || svcCmd == "restart" {
-					exe, _ := os.Executable()
-					baseDir := filepath.Dir(exe)
-
-					// Initialize paths for log reading
-					logsDir := filepath.Join(baseDir, "logs")
-					errorLogFilePath = filepath.Join(logsDir, "error.log")
-				}
-
-				err = service.Control(s, svcCmd)
-				if err != nil {
-					if strings.Contains(err.Error(), "Access is denied") || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "requires elevation") {
-						fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
-						os.Exit(1)
-					}
-
-					fmt.Fprintf(os.Stderr, "Failed to execute service command '%s': %v\n", svcCmd, err)
-					os.Exit(1)
-				}
-
-				if svcCmd == "start" {
-					time.Sleep(2 * time.Second)
-					data, err := os.ReadFile(errorLogFilePath)
-					if err == nil && len(data) > 0 {
-						lines := strings.Split(strings.TrimSpace(string(data)), "\n")
-						recentErrors := ""
-						for i := len(lines) - 1; i >= 0 && i >= len(lines)-5; i-- {
-							recentErrors = lines[i] + "\n" + recentErrors
-						}
-						if len(strings.TrimSpace(recentErrors)) > 0 {
-							fmt.Printf("Service command 'start' executed, but errors occurred shortly after:\n%s\n", recentErrors)
-							os.Exit(1)
-						}
-					}
-				}
-
-				fmt.Printf("Service command '%s' executed successfully.\n", svcCmd)
-			}
-			return
-		}
-
-		err = s.Run()
-		if err != nil {
-			log.Fatalf("Service runtime error: %v", err)
-		}
+		handleDockCmd(os.Args[2:])
 		return
 	}
 

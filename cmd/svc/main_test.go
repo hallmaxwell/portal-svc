@@ -3,6 +3,7 @@ package main
 import (
 	"bytes"
 	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 	"time"
@@ -132,5 +133,48 @@ func TestWriteLog(t *testing.T) {
 	}
 	if !strings.Contains(string(dataError), "this is an error message") {
 		t.Errorf("Expected error log to contain 'this is an error message'")
+	}
+}
+
+func TestValidateDockServiceCommands(t *testing.T) {
+	if err := validateDockServiceCommands([]string{"install", "start", "restart", "stop", "uninstall"}); err != nil {
+		t.Fatalf("expected valid service commands, got %v", err)
+	}
+
+	err := validateDockServiceCommands([]string{"start", "bogus"})
+	if err == nil {
+		t.Fatal("expected invalid service command error")
+	}
+	if !strings.Contains(err.Error(), "bogus") {
+		t.Fatalf("expected error to mention invalid command, got %v", err)
+	}
+}
+
+func TestSplitDockArgs(t *testing.T) {
+	flagArgs, svcArgs := splitDockArgs([]string{"--config", "custom.json", "install", "start"})
+
+	if strings.Join(flagArgs, " ") != "--config custom.json" {
+		t.Fatalf("flagArgs = %#v", flagArgs)
+	}
+	if strings.Join(svcArgs, " ") != "install start" {
+		t.Fatalf("svcArgs = %#v", svcArgs)
+	}
+}
+
+func TestRecentNonBlankLines(t *testing.T) {
+	logPath := filepath.Join(t.TempDir(), "error.log")
+	content := "first\n\nsecond\nthird\nfourth\n"
+	if err := os.WriteFile(logPath, []byte(content), 0600); err != nil {
+		t.Fatalf("failed to write test log: %v", err)
+	}
+
+	got, err := recentNonBlankLines(logPath, 2)
+	if err != nil {
+		t.Fatalf("recentNonBlankLines failed: %v", err)
+	}
+
+	want := "third\nfourth\n"
+	if got != want {
+		t.Fatalf("recentNonBlankLines = %q, want %q", got, want)
 	}
 }
