@@ -38,10 +38,11 @@ jobs:
           cd ${{ github.workspace }}
           go mod download
           go vet ./...
-          go build -trimpath -o /dev/null ./cmd/svc/...
+          go build -trimpath -o /dev/null ./cmd/local/...
 
           unset GOOS
-          go build -o portal-svc ./cmd/svc/main.go
+          go build -o portal-local ./cmd/local/main.go
+          go build -o portal-remote ./cmd/remote/main.go
       
       - name: Install sing-box
         env:
@@ -54,7 +55,7 @@ jobs:
       - name: Test Local Node (Dock)
         run: |
           cd ${{ github.workspace }}
-          ./portal-svc render --config templates/dock_config.tmpl.json --out /tmp/dock_run.json --ci
+          ./portal-local render --config templates/dock_config.tmpl.json --out /tmp/dock_run.json --ci
           
           sing-box check -c /tmp/dock_run.json
           sudo timeout 5 sing-box run -c /tmp/dock_run.json > dock.log 2>&1 || STATUS=$?
@@ -70,22 +71,22 @@ jobs:
             exit 1
           fi
 
-      - name: Test Cloud Node (Transit)
+      - name: Test Cloud Node (Remote)
         run: |
           cd ${{ github.workspace }}
-          ./portal-svc render --config templates/transit_config.tmpl.json --out /tmp/transit_run.json --ci
+          ./portal-remote render --config templates/remote_config.tmpl.json --out /tmp/remote_run.json --ci
           
-          sing-box check -c /tmp/transit_run.json
-          sudo timeout 5 sing-box run -c /tmp/transit_run.json > transit.log 2>&1 || STATUS=$?
+          sing-box check -c /tmp/remote_run.json
+          sudo timeout 5 sing-box run -c /tmp/remote_run.json > remote.log 2>&1 || STATUS=$?
           
-          cat transit.log
-          rm -f /tmp/transit_run.json
+          cat remote.log
+          rm -f /tmp/remote_run.json
           
           if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
             exit 1
           fi
           
-          if grep -qE "FATAL|ERROR" transit.log; then
+          if grep -qE "FATAL|ERROR" remote.log; then
             exit 1
           fi
 
@@ -157,7 +158,7 @@ jobs:
             
             cd ${{ github.workspace }}
             go mod download
-            GOOS=$GOOS GOARCH=$GOARCH go build -trimpath -ldflags="-s -w" -o "${{ github.workspace }}/portal_out/$DIR_NAME/$BIN_NAME" ./cmd/svc/main.go
+            GOOS=$GOOS GOARCH=$GOARCH go build -trimpath -ldflags="-s -w" -o "${{ github.workspace }}/portal_out/$DIR_NAME/$BIN_NAME" ./cmd/local/main.go
             
             cp LICENSE "${{ github.workspace }}/portal_out/$DIR_NAME/" 2>/dev/null || echo "LICENSE file not found!"
             
