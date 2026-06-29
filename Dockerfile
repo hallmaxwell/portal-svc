@@ -1,10 +1,10 @@
-# Stage 1: Build the unified portal-svc binary
+# Stage 1: Build the portal-remote binary
 FROM golang:1.24-alpine AS builder
 
 WORKDIR /src
 COPY . .
 RUN go mod download
-RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o portal-svc ./cmd/svc/main.go
+RUN CGO_ENABLED=0 GOOS=linux GOARCH=amd64 go build -ldflags="-s -w" -o portal-remote ./cmd/remote/main.go
 
 # Stage 2: Download the latest sing-box binary
 FROM alpine:latest AS downloader
@@ -31,16 +31,13 @@ WORKDIR /app
 RUN mkdir -p /app/core
 
 # Copy the built binary
-COPY --from=builder /src/portal-svc /app/portal-svc
+COPY --from=builder /src/portal-remote /app/portal-remote
 
 # Copy configuration templates
-COPY templates/dock_config.tmpl.json /app/templates/dock_config.tmpl.json
-COPY templates/transit_config.tmpl.json /app/templates/transit_config.tmpl.json
+COPY templates/remote_config.tmpl.json /app/templates/remote_config.tmpl.json
 
-# Copy sing-box binary to the location expected by 'dock', and symlink for 'transit' (in $PATH)
-COPY --from=downloader /sing-box /app/core/sing-box
-RUN ln -s /app/core/sing-box /usr/local/bin/sing-box
+# Copy sing-box binary to the location expected by 'remote'
+COPY --from=downloader /sing-box /usr/local/bin/sing-box
 
-# Set the entrypoint to the unified binary and default command to 'transit'
-ENTRYPOINT ["/app/portal-svc"]
-CMD ["transit"]
+# Set the entrypoint to the remote binary
+ENTRYPOINT ["/app/portal-remote"]
