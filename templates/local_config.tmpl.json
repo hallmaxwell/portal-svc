@@ -14,7 +14,7 @@
         "tag": "dns-remote",
         "type": "https",
         "server": "8.8.8.8",
-        "detour": "transit"
+        "detour": "remote"
       },
       {
         "tag": "dns-fakeip",
@@ -70,7 +70,7 @@
   "outbounds": [
     {
       "type": "vless",
-      "tag": "transit",
+      "tag": "remote",
       "server": "{DO_IP}",
       "server_port": 443,
       "uuid": "{UUID}",
@@ -106,14 +106,14 @@
         "type": "remote",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geosite/rule-set/geosite-cn.srs",
-        "download_detour": "transit"
+        "download_detour": "remote"
       },
       {
         "tag": "geoip-cn",
         "type": "remote",
         "format": "binary",
         "url": "https://raw.githubusercontent.com/SagerNet/sing-geoip/rule-set/geoip-cn.srs",
-        "download_detour": "transit"
+        "download_detour": "remote"
       }
     ],
     "rules": [
@@ -150,7 +150,7 @@
         "outbound": "direct"
       }
     ],
-    "final": "transit",
+    "final": "remote",
     "auto_detect_interface": true
   }
 }

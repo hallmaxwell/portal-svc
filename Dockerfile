@@ -27,7 +27,7 @@ RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 
-# Create core directory for sing-box so that dock subcommand's relative path logic works
+# Create core directory for sing-box so that local subcommand's relative path logic works
 RUN mkdir -p /app/core
 
 # Copy the built binary

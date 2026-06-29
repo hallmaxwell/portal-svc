@@ -22,8 +22,8 @@ import (
 )
 
 const (
-	defaultConfig = "templates/dock_config.tmpl.json"
-	tempConfig    = "dock.config.run.json"
+	defaultConfig = "templates/local_config.tmpl.json"
+	tempConfig    = "local.config.run.json"
 
 	serviceName        = "PortalDaemon"
 	serviceDisplayName = "Portal Daemon"
@@ -91,6 +91,7 @@ func (p *program) run() {
 
 	envPath := filepath.Join(baseDir, ".env")
 	p.outPath = filepath.Join(os.TempDir(), tempConfig)
+	srsDir := filepath.Join(baseDir, "srs")
 
 	if _, err := os.Stat(envPath); err != nil {
 		shared.SysLogError("Environment file not found", false)
@@ -112,6 +113,12 @@ func (p *program) run() {
 	if err != nil {
 		shared.SysLogError(fmt.Sprintf("Failed to render config template: %v", err), false)
 		os.Exit(1)
+	}
+
+	content, err = shared.ProcessRuleSets(content, srsDir)
+	if err != nil {
+		shared.SysLogError(fmt.Sprintf("Failed to process rule sets: %v", err), false)
+		// non-fatal, continue with original content
 	}
 
 	if err := os.WriteFile(p.outPath, []byte(content), 0600); err != nil {
@@ -331,7 +338,7 @@ func handleInitCmd(args []string) {
 
 	fmt.Printf("Initializing for local in %s environment...\n", portalEnv)
 
-	tmplName := "dock_config.tmpl.json"
+	tmplName := "local_config.tmpl.json"
 	tmplData, err := templates.FS.ReadFile(tmplName)
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Error: could not find embedded template '%s': %v\n", tmplName, err)
@@ -369,6 +376,7 @@ Flags:
       --config string   Path to the input template file
       --out string      Path to the output JSON file
       --ci              Inject CI rules (ci-direct-out, disable auto_route)
+      --index-srs       Download and index .srs files to local srs/ folder
   -h, --help            help for render`)
 }
 
@@ -378,6 +386,7 @@ func handleRenderCmd(args []string) {
 	configPath := renderCmd.String("config", "", "Path to the input template file")
 	outPath := renderCmd.String("out", "", "Path to the output JSON file")
 	ci := renderCmd.Bool("ci", false, "Inject CI rules")
+	indexSrs := renderCmd.Bool("index-srs", false, "Download and index .srs files")
 
 	err := renderCmd.Parse(args)
 	if err == flag.ErrHelp {
@@ -405,6 +414,21 @@ func handleRenderCmd(args []string) {
 			fmt.Fprintf(os.Stderr, "Failed to inject CI rules: %v\n", err)
 			os.Exit(1)
 		}
+	}
+
+	if *indexSrs {
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get current working directory: %v\n", err)
+			os.Exit(1)
+		}
+		srsDir := filepath.Join(cwd, "srs")
+		content, err = shared.ProcessRuleSets(content, srsDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to process rule sets: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Successfully indexed rule sets to %s\n", srsDir)
 	}
 
 	if err := os.WriteFile(*outPath, []byte(content), 0600); err != nil {

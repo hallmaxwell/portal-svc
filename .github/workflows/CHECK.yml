@@ -55,19 +55,19 @@ jobs:
       - name: Test Local Node (Dock)
         run: |
           cd ${{ github.workspace }}
-          ./portal-local render --config templates/dock_config.tmpl.json --out /tmp/dock_run.json --ci
+          ./portal-local render --config templates/local_config.tmpl.json --out /tmp/local_run.json --ci
           
-          sing-box check -c /tmp/dock_run.json
-          sudo timeout 5 sing-box run -c /tmp/dock_run.json > dock.log 2>&1 || STATUS=$?
+          sing-box check -c /tmp/local_run.json
+          sudo timeout 5 sing-box run -c /tmp/local_run.json > local.log 2>&1 || STATUS=$?
           
-          cat dock.log
-          rm -f /tmp/dock_run.json
+          cat local.log
+          rm -f /tmp/local_run.json
           
           if [ "${STATUS:-0}" -ne 124 ] && [ "${STATUS:-0}" -ne 0 ]; then
             exit 1
           fi
           
-          if grep -qE "FATAL|ERROR" dock.log; then
+          if grep -qE "FATAL|ERROR" local.log; then
             exit 1
           fi
 

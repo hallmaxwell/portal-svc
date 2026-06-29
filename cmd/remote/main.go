@@ -30,6 +30,18 @@ func runRemote(templatePath string) {
 		os.Exit(1)
 	}
 
+	exeDir, err := shared.ExecutableDir()
+	if err != nil {
+		shared.SysLogError(fmt.Sprintf("Failed to get executable directory: %v", err), true)
+		os.Exit(1)
+	}
+	srsDir := filepath.Join(exeDir, "srs")
+
+	content, err = shared.ProcessRuleSets(content, srsDir)
+	if err != nil {
+		shared.SysLogError(fmt.Sprintf("Failed to process rule sets: %v", err), true)
+	}
+
 	outPath := filepath.Join(os.TempDir(), tempConfig)
 	if err := os.WriteFile(outPath, []byte(content), 0600); err != nil {
 		shared.SysLogError(fmt.Sprintf("Failed to write rendered config: %v", err), true)
@@ -72,6 +84,7 @@ Flags:
       --config string   Path to the input template file
       --out string      Path to the output JSON file
       --ci              Inject CI rules
+      --index-srs       Download and index .srs files to local srs/ folder
   -h, --help            help for render`)
 }
 
@@ -81,6 +94,7 @@ func handleRenderCmd(args []string) {
 	configPath := renderCmd.String("config", "", "Path to the input template file")
 	outPath := renderCmd.String("out", "", "Path to the output JSON file")
 	ci := renderCmd.Bool("ci", false, "Inject CI rules")
+	indexSrs := renderCmd.Bool("index-srs", false, "Download and index .srs files")
 
 	err := renderCmd.Parse(args)
 	if err == flag.ErrHelp {
@@ -108,6 +122,21 @@ func handleRenderCmd(args []string) {
 			fmt.Fprintf(os.Stderr, "Failed to inject CI rules: %v\n", err)
 			os.Exit(1)
 		}
+	}
+
+	if *indexSrs {
+		cwd, err := os.Getwd()
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to get current working directory: %v\n", err)
+			os.Exit(1)
+		}
+		srsDir := filepath.Join(cwd, "srs")
+		content, err = shared.ProcessRuleSets(content, srsDir)
+		if err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to process rule sets: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Printf("Successfully indexed rule sets to %s\n", srsDir)
 	}
 
 	if err := os.WriteFile(*outPath, []byte(content), 0600); err != nil {
