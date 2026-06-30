@@ -221,7 +221,7 @@ Available Commands:
   restart     Restart Service
   uninstall   Remove Service
   logs        View service logs
-  init        Initialize environment and release default template
+  generate    Generate local environment template and .env file
   render      Render configuration template with environment variables
 
 Flags:
@@ -299,21 +299,21 @@ func handleLogsCmd(args []string) {
 	}
 }
 
-func printInitUsage() {
-	fmt.Println(`Initialize environment and release default template
+func printGenerateUsage() {
+	fmt.Println(`Generate local environment template and .env file
 
 Usage:
-  portal-local init [flags]
+  portal-local generate [flags]
 
 Flags:
-  -h, --help            help for init`)
+  -h, --help            help for generate`)
 }
 
-func handleInitCmd(args []string) {
-	initCmd := flag.NewFlagSet("init", flag.ContinueOnError)
-	initCmd.Usage = printInitUsage
+func handleGenerateCmd(args []string) {
+	generateCmd := flag.NewFlagSet("generate", flag.ContinueOnError)
+	generateCmd.Usage = printGenerateUsage
 
-	err := initCmd.Parse(args)
+	err := generateCmd.Parse(args)
 	if err == flag.ErrHelp {
 		os.Exit(0)
 	} else if err != nil {
@@ -324,19 +324,8 @@ func handleInitCmd(args []string) {
 	if err != nil {
 		baseDir = "."
 	}
-	envPath := filepath.Join(baseDir, ".env")
-	envMap, err := util.LoadEnvMap(envPath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Warning: failed to load environment file: %v\n", err)
-		envMap = make(map[string]string)
-	}
 
-	portalEnv := envMap["PORTAL_ENV"]
-	if portalEnv == "" {
-		portalEnv = "local"
-	}
-
-	fmt.Printf("Initializing for local in %s environment...\n", portalEnv)
+	fmt.Println("Generating local environment template...")
 
 	tmplName := "local_config.tmpl.json"
 	tmplData, err := templates.FS.ReadFile(tmplName)
@@ -363,6 +352,35 @@ func handleInitCmd(args []string) {
 			os.Exit(1)
 		}
 		fmt.Printf("Successfully released '%s' to '%s'.\n", tmplName, tmplDir)
+	}
+
+	envPath := filepath.Join(baseDir, ".env")
+	if _, err := os.Stat(envPath); err == nil {
+		fmt.Println(".env file already exists. Skipping parameter generation.")
+		os.Exit(0)
+	}
+
+	envContent := `DO_IP=
+UUID=
+PUBLIC_KEY=
+SHORT_ID=
+
+# List of domain suffixes to bypass proxy, formatted as JSON array elements
+# E.g., [".local", ".lan", ".company.internal"]
+BYPASS_DOMAINS=[".local", ".lan"]
+`
+
+	if err := os.WriteFile(envPath, []byte(envContent), 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: could not write .env file: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Successfully generated .env template at '%s'.\n", envPath)
+
+	fmt.Println("\nOpening .env file for configuration...")
+	if err := util.OpenFileInEditor(envPath); err != nil {
+		fmt.Fprintf(os.Stderr, "Notice: could not automatically open .env file in editor. Please open it manually to fill in the parameters from your remote node.\n")
+	} else {
+		fmt.Println("Please paste the UUID, PUBLIC_KEY, and SHORT_ID from your remote node, then save the file.")
 	}
 }
 
@@ -532,8 +550,8 @@ func main() {
 		return
 	}
 
-	if cmd == "init" {
-		handleInitCmd(os.Args[2:])
+	if cmd == "generate" {
+		handleGenerateCmd(os.Args[2:])
 		return
 	}
 
