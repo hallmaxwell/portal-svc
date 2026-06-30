@@ -41,8 +41,8 @@ jobs:
           go build -trimpath -o /dev/null ./cmd/local/...
 
           unset GOOS
-          go build -o portal-local ./cmd/local/main.go
-          go build -o portal-remote ./cmd/remote/main.go
+          go build -o portal-local-bin ./cmd/local/main.go
+          go build -o portal-remote-bin ./cmd/remote/main.go
       
       - name: Install sing-box
         env:
@@ -74,7 +74,7 @@ jobs:
       - name: Test Cloud Node (Remote)
         run: |
           cd ${{ github.workspace }}
-          ./portal-remote render --config templates/remote_config.tmpl.json --out /tmp/remote_run.json --ci
+          ./portal-remote-bin render --config templates/remote_config.tmpl.json --out /tmp/remote_run.json --ci
           
           sing-box check -c /tmp/remote_run.json
           sudo timeout 5 sing-box run -c /tmp/remote_run.json > remote.log 2>&1 || STATUS=$?

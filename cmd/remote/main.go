@@ -78,7 +78,7 @@ func printRenderUsage() {
 	fmt.Println(`Render a configuration template with environment variables
 
 Usage:
-  portal-remote render [flags]
+  portal-svc render [flags]
 
 Flags:
       --config string   Path to the input template file
@@ -147,14 +147,102 @@ func handleRenderCmd(args []string) {
 	fmt.Printf("Successfully rendered configuration to %s\n", *outPath)
 }
 
+func printGenerateUsage() {
+	fmt.Println(`Generate configuration template and .env file for remote node
+
+Usage:
+  portal-svc generate [flags]
+
+Flags:
+  -h, --help            help for generate`)
+}
+
+func handleGenerateCmd(args []string) {
+	generateCmd := flag.NewFlagSet("generate", flag.ContinueOnError)
+	generateCmd.Usage = printGenerateUsage
+
+	err := generateCmd.Parse(args)
+	if err == flag.ErrHelp {
+		os.Exit(0)
+	} else if err != nil {
+		os.Exit(1)
+	}
+
+	cwd, err := os.Getwd()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to get current directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	tmplDir := filepath.Join(cwd, "templates")
+	if err := os.MkdirAll(tmplDir, 0755); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to create templates directory: %v\n", err)
+		os.Exit(1)
+	}
+
+	tmplPath := filepath.Join(tmplDir, "remote_config.tmpl.json")
+	if _, err := os.Stat(tmplPath); os.IsNotExist(err) {
+		// Download from GitHub
+		fmt.Println("Downloading latest remote_config.tmpl.json...")
+		url := "https://raw.githubusercontent.com/hallmaxwell/portal-svc/main/templates/remote_config.tmpl.json"
+		if err := shared.DownloadFile(url, tmplPath); err != nil {
+			fmt.Fprintf(os.Stderr, "Failed to download template: %v\n", err)
+			os.Exit(1)
+		}
+		fmt.Println("Downloaded template to", tmplPath)
+	} else {
+		fmt.Println("Template already exists at", tmplPath)
+	}
+
+	envPath := filepath.Join(cwd, ".env")
+	if _, err := os.Stat(envPath); err == nil {
+		fmt.Println(".env file already exists. Skipping parameter generation.")
+		os.Exit(0)
+	}
+
+	fmt.Println("Generating cryptographic parameters...")
+	uuid, _ := shared.GenerateUUID()
+	shortID, _ := shared.GenerateShortID()
+	privKey, pubKey, _ := shared.GenerateX25519KeyPair()
+
+	envContent := fmt.Sprintf(`UUID=%s
+PRIVATE_KEY=%s
+SHORT_ID=%s
+
+# Optional Proxy Chain Parameters
+PROXY_IP=
+PROXY_PORT=
+PROXY_USERNAME=
+PROXY_PASSWORD=
+`, uuid, privKey, shortID)
+
+	if err := os.WriteFile(envPath, []byte(envContent), 0600); err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to write .env file: %v\n", err)
+		os.Exit(1)
+	}
+
+	fmt.Println("\n========================================================")
+	fmt.Println(" Initialization Complete! Server .env file created.")
+	fmt.Println("========================================================")
+	fmt.Println("\n!!! ACTION REQUIRED !!!")
+	fmt.Println("Copy the following parameters to your LOCAL client's .env file:")
+	fmt.Println("--------------------------------------------------------")
+	fmt.Printf("UUID=%s\n", uuid)
+	fmt.Printf("PUBLIC_KEY=%s\n", pubKey)
+	fmt.Printf("SHORT_ID=%s\n", shortID)
+	fmt.Println("--------------------------------------------------------")
+	fmt.Println("Keep your server's PRIVATE_KEY secret and safe.")
+}
+
 func printUsage() {
 	fmt.Println(`Usage:
-  portal-remote [flags]
-  portal-remote render [flags]
+  portal-svc [flags]
+  portal-svc render [flags]
+  portal-svc generate [flags]
 
 Flags:
       --config string   Path to template config (default "templates/remote_config.tmpl.json")
-  -h, --help            help for portal-remote`)
+  -h, --help            help for portal-svc`)
 }
 
 func main() {
@@ -168,6 +256,11 @@ func main() {
 
 		if cmd == "render" {
 			handleRenderCmd(os.Args[2:])
+			return
+		}
+
+		if cmd == "generate" {
+			handleGenerateCmd(os.Args[2:])
 			return
 		}
 	}

@@ -1,0 +1,11 @@
+services:
+  portal-node:
+    image: ghcr.io/hallmaxwell/portal-svc:latest
+    container_name: portal-node
+    restart: always
+    network_mode: host
+    env_file: .env
+    volumes:
+      - ./templates/remote_config.tmpl.json:/app/templates/remote_config.tmpl.json
+      - ./srs_cache:/app/srs
+      - /etc/localtime:/etc/localtime:ro
