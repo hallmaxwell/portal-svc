@@ -55,7 +55,7 @@ jobs:
       - name: Test Local Node (Dock)
         run: |
           cd ${{ github.workspace }}
-          ./portal-local render --config templates/local_config.tmpl.json --out /tmp/local_run.json --ci
+          ./portal-local-bin render --config templates/local_config.tmpl.json --out /tmp/local_run.json --ci
           
           sing-box check -c /tmp/local_run.json
           sudo timeout 5 sing-box run -c /tmp/local_run.json > local.log 2>&1 || STATUS=$?

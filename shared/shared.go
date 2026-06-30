@@ -11,7 +11,7 @@ import (
 	"sync"
 	"time"
 
-	"hawego/portal/util"
+	"portal-svc/util"
 
 	"gopkg.in/natefinch/lumberjack.v2"
 )
