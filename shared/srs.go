@@ -59,7 +59,7 @@ func ProcessRuleSets(configJSON string, srsDir string) (string, error) {
 			localFilePath := filepath.Join(srsDir, localFileName)
 
 			// Attempt to download the file
-			downloadErr := downloadFile(rsURL, localFilePath)
+			downloadErr := DownloadFile(rsURL, localFilePath)
 			if downloadErr != nil {
 				msg := fmt.Sprintf("Warning: failed to download rule set %s from %s: %v", rsTag, rsURL, downloadErr)
 				SysLogError(msg, true)
@@ -97,7 +97,7 @@ func ProcessRuleSets(configJSON string, srsDir string) (string, error) {
 	return string(newConfigBytes), nil
 }
 
-func downloadFile(url string, dest string) error {
+func DownloadFile(url string, dest string) error {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}

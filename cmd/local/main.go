@@ -327,8 +327,6 @@ func handleGenerateCmd(args []string) {
 
 	fmt.Println("Generating local environment template...")
 
-	fmt.Printf("Initializing for local in %s environment...\n", portalEnv)
-
 	tmplName := "local_config.tmpl.json"
 	tmplData, err := templates.FS.ReadFile(tmplName)
 	if err != nil {

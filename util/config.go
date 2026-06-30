@@ -7,7 +7,7 @@ import (
 	"path/filepath"
 	"strings"
 
-	"hawego/portal/templates"
+	"portal-svc/templates"
 )
 
 // RenderConfigTemplate reads a template file, replaces placeholders with values

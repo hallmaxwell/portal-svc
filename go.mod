@@ -1,4 +1,4 @@
-module hawego/portal
+module portal-svc
 
 go 1.24.3
 
