@@ -14,6 +14,9 @@ RUN apk add --no-cache ca-certificates
 
 WORKDIR /app
 
+# Create core directory for sing-box so that local subcommand's relative path logic works
+RUN mkdir -p /app/core
+
 # Copy the built binary
 COPY --from=builder /src/portal-svc /app/portal-svc
 

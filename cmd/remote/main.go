@@ -37,7 +37,7 @@ func runRemote(templatePath string) {
 	}
 	srsDir := filepath.Join(exeDir, "srs")
 
-	content, err = shared.ProcessRuleSets(content, srsDir, true)
+	content, err = shared.ProcessRuleSets(content, srsDir)
 	if err != nil {
 		shared.SysLogError(fmt.Sprintf("Failed to process rule sets: %v", err), true)
 	}
@@ -131,7 +131,7 @@ func handleRenderCmd(args []string) {
 			os.Exit(1)
 		}
 		srsDir := filepath.Join(cwd, "srs")
-		content, err = shared.ProcessRuleSets(content, srsDir, true)
+		content, err = shared.ProcessRuleSets(content, srsDir)
 		if err != nil {
 			fmt.Fprintf(os.Stderr, "Failed to process rule sets: %v\n", err)
 			os.Exit(1)

@@ -13,10 +13,10 @@ import (
 
 // ProcessRuleSets checks the parsed configuration for remote .srs rule sets,
 // downloads them to srsDir if possible, and modifies the config to use the local files.
-func ProcessRuleSets(configJSON string, srsDir string, printToStdout bool) (string, error) {
+func ProcessRuleSets(configJSON string, srsDir string) (string, error) {
 	var config map[string]interface{}
 	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-		return configJSON, fmt.Errorf("failed to parse config JSON: %w", err)
+		return "", fmt.Errorf("failed to parse config JSON: %w", err)
 	}
 
 	routeVal, ok := config["route"]
@@ -39,7 +39,7 @@ func ProcessRuleSets(configJSON string, srsDir string, printToStdout bool) (stri
 	}
 
 	if err := os.MkdirAll(srsDir, 0755); err != nil {
-		return configJSON, fmt.Errorf("failed to create srs directory %s: %w", srsDir, err)
+		return "", fmt.Errorf("failed to create srs directory %s: %w", srsDir, err)
 	}
 
 	modified := false
@@ -59,13 +59,13 @@ func ProcessRuleSets(configJSON string, srsDir string, printToStdout bool) (stri
 			localFilePath := filepath.Join(srsDir, localFileName)
 
 			// Attempt to download the file
-			downloadErr := DownloadFile(rsURL, localFilePath)
+			downloadErr := downloadFile(rsURL, localFilePath)
 			if downloadErr != nil {
 				msg := fmt.Sprintf("Warning: failed to download rule set %s from %s: %v", rsTag, rsURL, downloadErr)
-				SysLogError(msg, printToStdout)
+				SysLogError(msg, true)
 			} else {
 				msg := fmt.Sprintf("Successfully downloaded rule set %s to %s", rsTag, localFilePath)
-				SysLogInfo(msg, printToStdout)
+				SysLogInfo(msg, true)
 			}
 
 			// Check if local file exists (either just downloaded or cached)
@@ -79,7 +79,7 @@ func ProcessRuleSets(configJSON string, srsDir string, printToStdout bool) (stri
 				modified = true
 			} else {
 				msg := fmt.Sprintf("Warning: no local cache found for rule set %s, sing-box might fail if network is unreachable.", rsTag)
-				SysLogError(msg, printToStdout)
+				SysLogError(msg, true)
 			}
 		}
 	}
@@ -91,14 +91,13 @@ func ProcessRuleSets(configJSON string, srsDir string, printToStdout bool) (stri
 	// Re-marshal the modified configuration
 	newConfigBytes, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		return configJSON, fmt.Errorf("failed to re-marshal modified config: %w", err)
+		return "", fmt.Errorf("failed to re-marshal modified config: %w", err)
 	}
 
 	return string(newConfigBytes), nil
 }
 
-// DownloadFile downloads a file from the given URL and saves it to the destination.
-func DownloadFile(url string, dest string) error {
+func downloadFile(url string, dest string) error {
 	client := &http.Client{
 		Timeout: 10 * time.Second,
 	}

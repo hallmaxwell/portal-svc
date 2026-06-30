@@ -18,7 +18,7 @@ func TestProcessRuleSets(t *testing.T) {
 	testFile := filepath.Join(srsDir, "geosite-test.srs")
 	os.WriteFile(testFile, []byte("dummy data"), 0644)
 
-	newConfig, err := ProcessRuleSets(configJSONFail, srsDir, false)
+	newConfig, err := ProcessRuleSets(configJSONFail, srsDir)
 	if err != nil {
 		t.Fatalf("ProcessRuleSets failed: %v", err)
 	}
