@@ -13,9 +13,9 @@ import (
 	"sync/atomic"
 	"time"
 
-	"hawego/portal/shared"
-	"hawego/portal/templates"
-	"hawego/portal/util"
+	"portal-svc/shared"
+	"portal-svc/templates"
+	"portal-svc/util"
 
 	"github.com/kardianos/service"
 	"github.com/nxadm/tail"

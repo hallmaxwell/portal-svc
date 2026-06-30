@@ -8,8 +8,8 @@ import (
 	"path/filepath"
 	"time"
 
-	"hawego/portal/shared"
-	"hawego/portal/util"
+	"portal-svc/shared"
+	"portal-svc/util"
 )
 
 const (
