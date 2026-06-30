@@ -212,7 +212,7 @@ func (p *program) Stop(_ service.Service) error {
 
 func printMainUsage() {
 	fmt.Println(`Usage:
-  portal-local [command] [flags]
+  portal-svc [command] [flags]
 
 Available Commands:
   install     Install as System Service
@@ -225,14 +225,14 @@ Available Commands:
   render      Render configuration template with environment variables
 
 Flags:
-  -h, --help   help for portal-local`)
+  -h, --help   help for portal-svc`)
 }
 
 func printLogsUsage() {
 	fmt.Println(`View service logs
 
 Usage:
-  portal-local logs [flags] [error|info]
+  portal-svc logs [flags] [error|info]
 
 Flags:
   -f, --follow          Follow log output
@@ -303,7 +303,7 @@ func printGenerateUsage() {
 	fmt.Println(`Generate local environment template and .env file
 
 Usage:
-  portal-local generate [flags]
+  portal-svc generate [flags]
 
 Flags:
   -h, --help            help for generate`)
@@ -388,7 +388,7 @@ func printRenderUsage() {
 	fmt.Println(`Render a configuration template with environment variables
 
 Usage:
-  portal-local render [flags]
+  portal-svc render [flags]
 
 Flags:
       --config string   Path to the input template file
