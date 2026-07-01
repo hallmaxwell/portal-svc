@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -258,10 +257,7 @@ Flags:
 }
 
 func handleLogsCmd(args []string) {
-	if err := shared.InitLogPaths(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize log paths: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(shared.InitLogPaths(), "Failed to initialize log paths: %v")
 
 	logsCmd := flag.NewFlagSet("logs", flag.ContinueOnError)
 	logsCmd.Usage = printLogsUsage
@@ -269,11 +265,7 @@ func handleLogsCmd(args []string) {
 	follow := logsCmd.Bool("f", false, "")
 
 	err := logsCmd.Parse(args)
-	if errors.Is(err, flag.ErrHelp) {
-		os.Exit(0)
-	} else if err != nil {
-		os.Exit(1)
-	}
+	shared.HandleFlagError(err)
 	if *nLines < 0 {
 		fmt.Fprintln(os.Stderr, "Error: --lines must be greater than or equal to 0")
 		os.Exit(1)
@@ -296,19 +288,13 @@ func handleLogsCmd(args []string) {
 			MustExist: false,
 			Logger:    tail.DiscardingLogger,
 		})
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to tail log file: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(err, "Failed to tail log file: %v", err)
 		for line := range t.Lines {
 			fmt.Println(line.Text)
 		}
 	} else {
 		recentLogs, err := shared.RecentNonBlankLines(targetLogFile, *nLines)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to read log file: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(err, "Failed to read log file: %v", err)
 
 		if util.IsNotBlank(recentLogs) {
 			fmt.Print(recentLogs)
@@ -331,11 +317,7 @@ func handleGenerateCmd(args []string) {
 	generateCmd.Usage = printGenerateUsage
 
 	err := generateCmd.Parse(args)
-	if errors.Is(err, flag.ErrHelp) {
-		os.Exit(0)
-	} else if err != nil {
-		os.Exit(1)
-	}
+	shared.HandleFlagError(err)
 
 	baseDir, err := os.Getwd()
 	if err != nil {
@@ -346,16 +328,10 @@ func handleGenerateCmd(args []string) {
 
 	tmplName := "local_config.tmpl.json"
 	tmplData, err := templates.FS.ReadFile(tmplName)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Error: could not find embedded template '%s': %v\n", tmplName, err)
-		os.Exit(1)
-	}
+	shared.CheckError(err, "Error: could not find embedded template '%s': %v", tmplName, err)
 
 	tmplDir := filepath.Join(baseDir, "templates")
-	if err := os.MkdirAll(tmplDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: could not create templates directory: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(os.MkdirAll(tmplDir, 0755), "Error: could not create templates directory: %v")
 
 	outPath := filepath.Join(tmplDir, tmplName)
 	if _, err := os.Stat(outPath); err == nil {
@@ -364,10 +340,7 @@ func handleGenerateCmd(args []string) {
 		fmt.Fprintf(os.Stderr, "Error: could not inspect template file '%s': %v\n", outPath, err)
 		os.Exit(1)
 	}
-	if err := os.WriteFile(outPath, tmplData, 0644); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: could not write template file: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(os.WriteFile(outPath, tmplData, 0644), "Error: could not write template file: %v")
 	fmt.Printf("Successfully released '%s' to '%s'.\n", tmplName, tmplDir)
 
 	envPath := filepath.Join(baseDir, ".env")
@@ -386,10 +359,7 @@ SHORT_ID=
 BYPASS_DOMAINS=[".local", ".lan"]
 `
 
-	if err := os.WriteFile(envPath, []byte(envContent), 0600); err != nil {
-		fmt.Fprintf(os.Stderr, "Error: could not write .env file: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(os.WriteFile(envPath, []byte(envContent), 0600), "Error: could not write .env file: %v")
 	fmt.Printf("Successfully generated .env template at '%s'.\n", envPath)
 
 	fmt.Println("\nOpening .env file for configuration...")
@@ -423,11 +393,7 @@ func handleRenderCmd(args []string) {
 	indexSrs := renderCmd.Bool("index-srs", false, "Download and index .srs files")
 
 	err := renderCmd.Parse(args)
-	if errors.Is(err, flag.ErrHelp) {
-		os.Exit(0)
-	} else if err != nil {
-		os.Exit(1)
-	}
+	shared.HandleFlagError(err)
 
 	if *configPath == "" || *outPath == "" {
 		fmt.Println("Error: --config and --out are required.")
@@ -437,38 +403,23 @@ func handleRenderCmd(args []string) {
 
 	envMap := shared.ProcessEnvMap()
 	content, err := util.RenderConfigTemplate(*configPath, envMap)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to render template: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(err, "Failed to render template: %v", err)
 
 	if *ci {
 		content, err = util.InjectCIRules(content)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to inject CI rules: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(err, "Failed to inject CI rules: %v", err)
 	}
 
 	if *indexSrs {
 		cwd, err := os.Getwd()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get current working directory: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(err, "Failed to get current working directory: %v", err)
 		srsDir := filepath.Join(cwd, "srs")
 		content, err = shared.ProcessRuleSets(content, srsDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to process rule sets: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(err, "Failed to process rule sets: %v", err)
 		fmt.Printf("Successfully indexed rule sets to %s\n", srsDir)
 	}
 
-	if err := os.WriteFile(*outPath, []byte(content), 0600); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write output file: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(os.WriteFile(*outPath, []byte(content), 0600), "Failed to write output file: %v")
 
 	fmt.Printf("Successfully rendered configuration to %s\n", *outPath)
 }
@@ -490,17 +441,10 @@ func handleTweakCmd(args []string) {
 	configPath := tweakCmd.String("config", defaultConfig, "Path to the input template file")
 
 	err := tweakCmd.Parse(args)
-	if errors.Is(err, flag.ErrHelp) {
-		os.Exit(0)
-	} else if err != nil {
-		os.Exit(1)
-	}
+	shared.HandleFlagError(err)
 
 	baseDir, err := shared.ExecutableDir()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to get executable path: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(err, "Failed to get executable path: %v", err)
 
 	var tplPath = *configPath
 	if !filepath.IsAbs(tplPath) {
@@ -515,17 +459,11 @@ func handleTweakCmd(args []string) {
 	}
 
 	content, err := util.RenderConfigTemplate(tplPath, envMap)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to render config template: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(err, "Failed to render config template: %v", err)
 
 	overridePath := filepath.Join(baseDir, tweak.OverrideFileName)
 	err = tweak.RunTUI(content, overridePath)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to run TUI: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(err, "Failed to run TUI: %v", err)
 }
 
 func splitServiceArgs(args []string) (flagArgs []string, configPath string) {
@@ -547,14 +485,8 @@ func runServiceCommand(s service.Service, svcCmd string) {
 
 	if serviceCommandNeedsSingBox(svcCmd) {
 		baseDir, err = shared.ExecutableDir()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get executable path: %v\n", err)
-			os.Exit(1)
-		}
-		if err := shared.EnsureBundledSingBox(baseDir); err != nil {
-			fmt.Fprintf(os.Stderr, "Pre-flight check failed: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(err, "Failed to get executable path: %v", err)
+		shared.CheckError(shared.EnsureBundledSingBox(baseDir), "Pre-flight check failed: %v")
 	}
 
 	if serviceCommandNeedsElevation(svcCmd) && !util.IsAdmin() {
@@ -653,10 +585,7 @@ func main() {
 
 		prg := &program{templatePath: configPath}
 		s, err := service.New(prg, svcConfig)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to create service: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(err, "Failed to create service: %v", err)
 
 		runServiceCommand(s, cmd)
 		return
@@ -692,10 +621,7 @@ func runDaemonMode(configPath string) {
 
 	prg := &program{templatePath: configPath}
 	s, err := service.New(prg, svcConfig)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create service: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(err, "Failed to create service: %v", err)
 
 	err = s.Run()
 	if err != nil {
