@@ -24,6 +24,21 @@
     ],
     "rules": [
       {
+        "domain_suffix": [
+          "msftconnecttest.com",
+          "msftncsi.com",
+          "captive.apple.com",
+          "connectivitycheck.gstatic.com",
+          "connect.rom.miui.com",
+          "connectivitycheck.platform.hicloud.com",
+          "connect.coloros.com",
+          "connectivitycheck.oppomobile.com",
+          "connectivitycheck.vivo.com.cn",
+          "connectivity-check.ubuntu.com"
+        ],
+        "server": "dns-direct"
+      },
+      {
         "query_type": [
           "AAAA"
         ],
@@ -118,6 +133,21 @@
     ],
     "rules": [
       {"action": "sniff"},
+      {
+        "domain_suffix": [
+          "msftconnecttest.com",
+          "msftncsi.com",
+          "captive.apple.com",
+          "connectivitycheck.gstatic.com",
+          "connect.rom.miui.com",
+          "connectivitycheck.platform.hicloud.com",
+          "connect.coloros.com",
+          "connectivitycheck.oppomobile.com",
+          "connectivitycheck.vivo.com.cn",
+          "connectivity-check.ubuntu.com"
+        ],
+        "outbound": "direct"
+      },
       {
         "domain_suffix": "{BYPASS_DOMAINS}",
         "outbound": "direct" 
