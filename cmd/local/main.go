@@ -13,14 +13,17 @@ import (
 	"sync/atomic"
 	"time"
 
+	_ "embed"
 	"portal-svc/shared"
 	"portal-svc/templates"
+	"portal-svc/ui"
 	"portal-svc/util"
 	"portal-svc/util/tweak"
 
 	"github.com/kardianos/service"
 	"github.com/nxadm/tail"
 )
+
 
 const (
 	defaultConfig = "templates/local_config.tmpl.json"
@@ -30,6 +33,8 @@ const (
 	serviceDisplayName = "Portal Daemon"
 	serviceDescription = "Portal Daemon background service with auto-recovery"
 )
+
+var p = ui.NewPrinter()
 
 func init() {
 	shared.CaptureElevatedOut()
@@ -225,36 +230,9 @@ func (p *program) Stop(_ service.Service) error {
 // Command Handlers
 // ==========================================
 
-func printMainUsage() {
-	fmt.Println(`Usage:
-  portal-svc [command] [flags]
+func printMainUsage() { ui.PrintHelp(p, ui.HelpConfigJSON, "main_local") }
 
-Available Commands:
-  install     Install as System Service
-  start       Start Service
-  stop        Stop Service
-  restart     Restart Service
-  uninstall   Remove Service
-  logs        View service logs
-  generate    Generate local environment template and .env file
-  render      Render configuration template with environment variables
-  tweak       Interactive TUI to modify configuration settings
-
-Flags:
-  -h, --help   help for portal-svc`)
-}
-
-func printLogsUsage() {
-	fmt.Println(`View service logs
-
-Usage:
-  portal-svc logs [flags] [error|info]
-
-Flags:
-  -f, --follow          Follow log output
-  -n, --lines int       Number of lines to show (default 100)
-  -h, --help            help for logs`)
-}
+func printLogsUsage() { ui.PrintHelp(p, ui.HelpConfigJSON, "logs") }
 
 func handleLogsCmd(args []string) {
 	shared.CheckError(shared.InitLogPaths(), "Failed to initialize log paths: %v")
@@ -267,7 +245,7 @@ func handleLogsCmd(args []string) {
 	err := logsCmd.Parse(args)
 	shared.HandleFlagError(err)
 	if *nLines < 0 {
-		fmt.Fprintln(os.Stderr, "Error: --lines must be greater than or equal to 0")
+		p.Error(ui.NewAppError("FLAG_ERR", "Error: --lines must be greater than or equal to 0", "", ui.SeverityError, nil))
 		os.Exit(1)
 	}
 
@@ -277,7 +255,7 @@ func handleLogsCmd(args []string) {
 	}
 
 	if _, err := os.Stat(targetLogFile); os.IsNotExist(err) {
-		fmt.Printf("Log file does not exist: %s\n", targetLogFile)
+		p.Error(ui.NewAppError("LOG_MISSING", fmt.Sprintf("Log file does not exist: %s", targetLogFile), "", ui.SeverityWarning, nil))
 		return
 	}
 
@@ -290,27 +268,19 @@ func handleLogsCmd(args []string) {
 		})
 		shared.CheckError(err, "Failed to tail log file: %v", err)
 		for line := range t.Lines {
-			fmt.Println(line.Text)
+			p.Print(line.Text)
 		}
 	} else {
 		recentLogs, err := shared.RecentNonBlankLines(targetLogFile, *nLines)
 		shared.CheckError(err, "Failed to read log file: %v", err)
 
 		if util.IsNotBlank(recentLogs) {
-			fmt.Print(recentLogs)
+			p.Print(recentLogs)
 		}
 	}
 }
 
-func printGenerateUsage() {
-	fmt.Println(`Generate local environment template and .env file
-
-Usage:
-  portal-svc generate [flags]
-
-Flags:
-  -h, --help            help for generate`)
-}
+func printGenerateUsage() { ui.PrintHelp(p, ui.HelpConfigJSON, "generate") }
 
 func handleGenerateCmd(args []string) {
 	generateCmd := flag.NewFlagSet("generate", flag.ContinueOnError)
@@ -324,7 +294,7 @@ func handleGenerateCmd(args []string) {
 		baseDir = "."
 	}
 
-	fmt.Println("Generating local environment template...")
+	p.Info("Generating local environment template...")
 
 	tmplName := "local_config.tmpl.json"
 	tmplData, err := templates.FS.ReadFile(tmplName)
@@ -335,17 +305,17 @@ func handleGenerateCmd(args []string) {
 
 	outPath := filepath.Join(tmplDir, tmplName)
 	if _, err := os.Stat(outPath); err == nil {
-		fmt.Printf("Template '%s' already exists in '%s'. Skipping.\n", tmplName, tmplDir)
+		p.Info(fmt.Sprintf("Template '%s' already exists in '%s'. Skipping.", tmplName, tmplDir))
 	} else if !os.IsNotExist(err) {
-		fmt.Fprintf(os.Stderr, "Error: could not inspect template file '%s': %v\n", outPath, err)
+		p.Error(ui.NewAppError("TMPL_INSPECT_ERR", fmt.Sprintf("Error: could not inspect template file '%s'", outPath), err.Error(), ui.SeverityError, err))
 		os.Exit(1)
 	}
 	shared.CheckError(os.WriteFile(outPath, tmplData, 0644), "Error: could not write template file: %v")
-	fmt.Printf("Successfully released '%s' to '%s'.\n", tmplName, tmplDir)
+	p.Success(fmt.Sprintf("Successfully released '%s' to '%s'.", tmplName, tmplDir))
 
 	envPath := filepath.Join(baseDir, ".env")
 	if _, err := os.Stat(envPath); err == nil {
-		fmt.Println(".env file already exists. Skipping parameter generation.")
+		p.Info(".env file already exists. Skipping parameter generation.")
 		os.Exit(0)
 	}
 
@@ -360,29 +330,17 @@ BYPASS_DOMAINS=[".local", ".lan"]
 `
 
 	shared.CheckError(os.WriteFile(envPath, []byte(envContent), 0600), "Error: could not write .env file: %v")
-	fmt.Printf("Successfully generated .env template at '%s'.\n", envPath)
+	p.Success(fmt.Sprintf("Successfully generated .env template at '%s'.", envPath))
 
-	fmt.Println("\nOpening .env file for configuration...")
+	p.Info("Opening .env file for configuration...")
 	if err := util.OpenFileInEditor(envPath); err != nil {
-		fmt.Fprintf(os.Stderr, "Notice: could not automatically open .env file in editor. Please open it manually to fill in the parameters from your remote node.\n")
+		p.Warning("Notice: could not automatically open .env file in editor. Please open it manually to fill in the parameters from your remote node.")
 	} else {
-		fmt.Println("Please paste the UUID, PUBLIC_KEY, and SHORT_ID from your remote node, then save the file.")
+		p.Warning("Please paste the UUID, PUBLIC_KEY, and SHORT_ID from your remote node, then save the file.")
 	}
 }
 
-func printRenderUsage() {
-	fmt.Println(`Render a configuration template with environment variables
-
-Usage:
-  portal-svc render [flags]
-
-Flags:
-      --config string   Path to the input template file
-      --out string      Path to the output JSON file
-      --ci              Inject CI rules (ci-direct-out, disable auto_route)
-      --index-srs       Download and index .srs files to local srs/ folder
-  -h, --help            help for render`)
-}
+func printRenderUsage() { ui.PrintHelp(p, ui.HelpConfigJSON, "render") }
 
 func handleRenderCmd(args []string) {
 	renderCmd := flag.NewFlagSet("render", flag.ContinueOnError)
@@ -396,7 +354,7 @@ func handleRenderCmd(args []string) {
 	shared.HandleFlagError(err)
 
 	if *configPath == "" || *outPath == "" {
-		fmt.Println("Error: --config and --out are required.")
+		p.Error(ui.NewAppError("ARGS_MISSING", "--config and --out are required.", "", ui.SeverityError, nil))
 		printRenderUsage()
 		os.Exit(1)
 	}
@@ -416,24 +374,15 @@ func handleRenderCmd(args []string) {
 		srsDir := filepath.Join(cwd, "srs")
 		content, err = shared.ProcessRuleSets(content, srsDir)
 		shared.CheckError(err, "Failed to process rule sets: %v", err)
-		fmt.Printf("Successfully indexed rule sets to %s\n", srsDir)
+		p.Success(fmt.Sprintf("Successfully indexed rule sets to %s", srsDir))
 	}
 
 	shared.CheckError(os.WriteFile(*outPath, []byte(content), 0600), "Failed to write output file: %v")
 
-	fmt.Printf("Successfully rendered configuration to %s\n", *outPath)
+	p.Success(fmt.Sprintf("Successfully rendered configuration to %s", *outPath))
 }
 
-func printTweakUsage() {
-	fmt.Println(`Interactive TUI to modify configuration settings
-
-Usage:
-  portal-svc tweak [flags]
-
-Flags:
-      --config string   Path to the input template file (default "templates/local_config.tmpl.json")
-  -h, --help            help for tweak`)
-}
+func printTweakUsage() { ui.PrintHelp(p, ui.HelpConfigJSON, "tweak") }
 
 func handleTweakCmd(args []string) {
 	tweakCmd := flag.NewFlagSet("tweak", flag.ContinueOnError)
@@ -454,7 +403,7 @@ func handleTweakCmd(args []string) {
 	envPath := filepath.Join(baseDir, ".env")
 	envMap, err := util.LoadEnvMap(envPath)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Notice: could not load environment file: %v\n", err)
+		p.Warning(fmt.Sprintf("Notice: could not load environment file: %v", err))
 		envMap = make(map[string]string)
 	}
 
@@ -490,14 +439,13 @@ func runServiceCommand(s service.Service, svcCmd string) {
 	}
 
 	if serviceCommandNeedsElevation(svcCmd) && !util.IsAdmin() {
-		fmt.Println("Elevated privileges required for service command. Attempting to elevate...")
+		p.Info("Elevated privileges required for service command. Attempting to elevate...")
 		err := util.RunMeElevated()
 		if err != nil {
 			if strings.Contains(err.Error(), "elevated process exited with code") {
 				os.Exit(1)
 			}
-			fmt.Fprintf(os.Stderr, "Failed to elevate privileges: %v\n", err)
-			fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
+			p.Error(ui.NewAppError("ELEVATE_FAILED", "Permission denied: please run this command as an administrator/root.", err.Error(), ui.SeverityError, err))
 			os.Exit(1)
 		}
 		return
@@ -511,11 +459,11 @@ func runServiceCommand(s service.Service, svcCmd string) {
 	err = service.Control(s, svcCmd)
 	if err != nil {
 		if strings.Contains(err.Error(), "Access is denied") || strings.Contains(err.Error(), "permission denied") || strings.Contains(err.Error(), "requires elevation") {
-			fmt.Fprintf(os.Stderr, "Permission denied: please run this command as an administrator/root.\n")
+			p.Error(ui.NewAppError("PERM_DENIED", "Permission denied: please run this command as an administrator/root.", "", ui.SeverityError, nil))
 			os.Exit(1)
 		}
 
-		fmt.Fprintf(os.Stderr, "Failed to execute service command '%s': %v\n", svcCmd, err)
+		p.Error(ui.NewAppError("SVC_CMD_ERR", fmt.Sprintf("Failed to execute service command '%s'", svcCmd), err.Error(), ui.SeverityError, err))
 		os.Exit(1)
 	}
 
@@ -523,15 +471,15 @@ func runServiceCommand(s service.Service, svcCmd string) {
 		time.Sleep(2 * time.Second)
 		recentErrors, err := shared.RecentNonBlankLines(shared.ErrorLogFilePath, 5)
 		if err != nil && !os.IsNotExist(err) {
-			fmt.Fprintf(os.Stderr, "Warning: failed to read startup error log: %v\n", err)
+			p.Warning(fmt.Sprintf("Warning: failed to read startup error log: %v", err))
 		}
 		if err == nil && util.IsNotBlank(recentErrors) {
-			fmt.Printf("Service command '%s' executed, but errors occurred shortly after:\n%s\n", svcCmd, recentErrors)
+			p.Warning(fmt.Sprintf("Service command '%s' executed, but errors occurred shortly after:\n%s", svcCmd, recentErrors))
 			os.Exit(1)
 		}
 	}
 
-	fmt.Printf("Service command '%s' executed successfully.\n", svcCmd)
+	p.Success(fmt.Sprintf("Service command '%s' executed successfully.", svcCmd))
 }
 
 func main() {
@@ -601,7 +549,7 @@ func main() {
 		return
 	}
 
-	fmt.Printf("Error: unknown command %q\n", cmd)
+	p.Error(ui.NewAppError("UNKNOWN_CMD", fmt.Sprintf("Error: unknown command %q", cmd), "", ui.SeverityError, nil))
 	printMainUsage()
 	os.Exit(1)
 }
