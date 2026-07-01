@@ -484,9 +484,8 @@ func runServiceCommand(s service.Service, svcCmd string) {
 
 func main() {
 	if len(os.Args) < 2 {
-		// When no args provided, start the daemon (run by the service manager)
-		runDaemonMode(defaultConfig)
-		return
+		ui.PrintHelp(p, ui.HelpConfigJSON, "main_local")
+		os.Exit(0)
 	}
 
 	cmd := os.Args[1]
@@ -516,6 +515,18 @@ func main() {
 		return
 	}
 
+	if cmd == "run" {
+		configPath := defaultConfig
+		// Quick parse for --config
+		for i, arg := range os.Args {
+			if arg == "--config" && i+1 < len(os.Args) {
+				configPath = os.Args[i+1]
+			}
+		}
+		runDaemonMode(configPath)
+		return
+	}
+
 	if isServiceCommand(cmd) {
 		_, configPath := splitServiceArgs(os.Args[2:])
 
@@ -528,7 +539,7 @@ func main() {
 				"OnFailureDelayDuration": "10s",
 				"OnFailureResetPeriod":   600,
 			},
-			Arguments: []string{"--config", configPath},
+			Arguments: []string{"run", "--config", configPath},
 		}
 
 		prg := &program{templatePath: configPath}
@@ -564,7 +575,7 @@ func runDaemonMode(configPath string) {
 			"OnFailureDelayDuration": "10s",
 			"OnFailureResetPeriod":   600,
 		},
-		Arguments: []string{"--config", configPath},
+		Arguments: []string{"run", "--config", configPath},
 	}
 
 	prg := &program{templatePath: configPath}

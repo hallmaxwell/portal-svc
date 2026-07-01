@@ -176,26 +176,34 @@ func printUsage() { ui.PrintHelp(p, ui.HelpConfigJSON, "main_remote") }
 var p = ui.NewPrinter()
 
 func main() {
-	if len(os.Args) > 1 {
-		cmd := os.Args[1]
-
-		if cmd == "-h" || cmd == "--help" {
-			printUsage()
-			os.Exit(0)
-		}
-
-		if cmd == "render" {
-			handleRenderCmd(os.Args[2:])
-			return
-		}
-
-		if cmd == "generate" {
-			handleGenerateCmd(os.Args[2:])
-			return
-		}
+	if len(os.Args) < 2 {
+		ui.PrintHelp(p, ui.HelpConfigJSON, "main_remote")
+		os.Exit(0)
 	}
 
-	// Parse flags for main runner mode
+	cmd := os.Args[1]
+
+	if cmd == "-h" || cmd == "--help" {
+		printUsage()
+		os.Exit(0)
+	}
+
+	if cmd == "render" {
+		handleRenderCmd(os.Args[2:])
+		return
+	}
+
+	if cmd == "generate" {
+		handleGenerateCmd(os.Args[2:])
+		return
+	}
+
+	if cmd != "run" {
+		p.Error(ui.NewAppError("UNKNOWN_CMD", fmt.Sprintf("Error: unknown command %q", cmd), "", ui.SeverityError, nil))
+		os.Exit(1)
+	}
+
+	// Parse flags for main runner mode (run command)
 	configPath := defaultRemoteConfig
 	for i := 1; i < len(os.Args); i++ {
 		if os.Args[i] == "--config" && i+1 < len(os.Args) {
