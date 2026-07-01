@@ -16,6 +16,7 @@ import (
 	"portal-svc/shared"
 	"portal-svc/templates"
 	"portal-svc/util"
+	"portal-svc/util/tweak"
 
 	"github.com/kardianos/service"
 	"github.com/nxadm/tail"
@@ -121,6 +122,20 @@ func (p *program) run() {
 		// non-fatal, continue with original content
 	}
 
+	// Apply user overrides
+	overridePath := filepath.Join(baseDir, tweak.OverrideFileName)
+	overrides, err := tweak.LoadOverrides(overridePath)
+	if err != nil {
+		shared.SysLogError(fmt.Sprintf("Failed to load user overrides: %v", err), false)
+	} else if len(overrides) > 0 {
+		content, err = tweak.ApplyOverrides(content, overrides)
+		if err != nil {
+			shared.SysLogError(fmt.Sprintf("Failed to apply user overrides: %v", err), false)
+		} else {
+			shared.SysLogInfo("Applied user configuration overrides", false)
+		}
+	}
+
 	if err := os.WriteFile(p.outPath, []byte(content), 0600); err != nil {
 		shared.SysLogError(fmt.Sprintf("Failed to write rendered config: %v", err), false)
 		os.Exit(1)
@@ -223,6 +238,7 @@ Available Commands:
   logs        View service logs
   generate    Generate local environment template and .env file
   render      Render configuration template with environment variables
+  tweak       Interactive TUI to modify configuration settings
 
 Flags:
   -h, --help   help for portal-svc`)
@@ -457,6 +473,61 @@ func handleRenderCmd(args []string) {
 	fmt.Printf("Successfully rendered configuration to %s\n", *outPath)
 }
 
+func printTweakUsage() {
+	fmt.Println(`Interactive TUI to modify configuration settings
+
+Usage:
+  portal-svc tweak [flags]
+
+Flags:
+      --config string   Path to the input template file (default "templates/local_config.tmpl.json")
+  -h, --help            help for tweak`)
+}
+
+func handleTweakCmd(args []string) {
+	tweakCmd := flag.NewFlagSet("tweak", flag.ContinueOnError)
+	tweakCmd.Usage = printTweakUsage
+	configPath := tweakCmd.String("config", defaultConfig, "Path to the input template file")
+
+	err := tweakCmd.Parse(args)
+	if err == flag.ErrHelp {
+		os.Exit(0)
+	} else if err != nil {
+		os.Exit(1)
+	}
+
+	baseDir, err := shared.ExecutableDir()
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to get executable path: %v\n", err)
+		os.Exit(1)
+	}
+
+	var tplPath = *configPath
+	if !filepath.IsAbs(tplPath) {
+		tplPath = filepath.Join(baseDir, tplPath)
+	}
+
+	envPath := filepath.Join(baseDir, ".env")
+	envMap, err := util.LoadEnvMap(envPath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Notice: could not load environment file: %v\n", err)
+		envMap = make(map[string]string)
+	}
+
+	content, err := util.RenderConfigTemplate(tplPath, envMap)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to render config template: %v\n", err)
+		os.Exit(1)
+	}
+
+	overridePath := filepath.Join(baseDir, tweak.OverrideFileName)
+	err = tweak.RunTUI(content, overridePath)
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "Failed to run TUI: %v\n", err)
+		os.Exit(1)
+	}
+}
+
 func splitServiceArgs(args []string) (flagArgs []string, configPath string) {
 	configPath = defaultConfig
 	for i := 0; i < len(args); i++ {
@@ -557,6 +628,11 @@ func main() {
 
 	if cmd == "render" {
 		handleRenderCmd(os.Args[2:])
+		return
+	}
+
+	if cmd == "tweak" {
+		handleTweakCmd(os.Args[2:])
 		return
 	}
 
