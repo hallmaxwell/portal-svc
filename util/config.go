@@ -2,9 +2,9 @@ package util
 
 import (
 	"encoding/json"
-	"fmt"
 	"os"
 	"path/filepath"
+	"portal-svc/ui"
 	"strings"
 
 	"portal-svc/templates"
@@ -19,7 +19,7 @@ func RenderConfigTemplate(templatePath string, envMap map[string]string) (string
 		baseName := filepath.Base(templatePath)
 		tempData, err = templates.FS.ReadFile(baseName)
 		if err != nil {
-			return "", fmt.Errorf("failed to read config template from disk and embedded fs: %v", err)
+			return "", ui.NewAppError("TMPL_READ_ERR", "Failed to read config template", err.Error(), ui.SeverityError, err)
 		}
 	}
 
@@ -47,7 +47,7 @@ func RenderConfigTemplate(templatePath string, envMap map[string]string) (string
 func InjectCIRules(jsonContent string) (string, error) {
 	var data map[string]interface{}
 	if err := json.Unmarshal([]byte(jsonContent), &data); err != nil {
-		return "", fmt.Errorf("failed to parse JSON: %v", err)
+		return "", ui.NewAppError("JSON_PARSE_ERR", "Failed to parse JSON", err.Error(), ui.SeverityError, err)
 	}
 
 	// 1. tun auto_route=false, strict_route=false
@@ -95,7 +95,7 @@ func InjectCIRules(jsonContent string) (string, error) {
 
 	outBytes, err := json.MarshalIndent(data, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("failed to marshal injected JSON: %v", err)
+		return "", ui.NewAppError("JSON_MARSHAL_ERR", "Failed to marshal injected JSON", err.Error(), ui.SeverityError, err)
 	}
 	return string(outBytes), nil
 }
