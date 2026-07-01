@@ -21,8 +21,30 @@ func NewPrinter() Printer {
 	return &cliPrinter{}
 }
 
+func cleanTagPrefix(msg, tag string) string {
+	for {
+		msg = strings.TrimSpace(msg)
+		lowerMsg := strings.ToLower(msg)
+		lowerTag := strings.ToLower(tag)
+
+		if strings.HasPrefix(lowerMsg, "["+lowerTag+"]") {
+			msg = msg[len(lowerTag)+2:]
+			continue
+		}
+
+		if strings.HasPrefix(lowerMsg, lowerTag+":") {
+			msg = msg[len(lowerTag)+1:]
+			continue
+		}
+
+		break
+	}
+	return strings.TrimSpace(msg)
+}
+
 func (p *cliPrinter) Success(msg string) {
-	fmt.Println(styleSuccess.Render("✔ " + msg))
+	msg = cleanTagPrefix(msg, "SUCCESS")
+	fmt.Printf("[%s] %s\n", styleSuccess.Render("SUCCESS"), msg)
 }
 
 func (p *cliPrinter) Error(err error) {
@@ -34,18 +56,22 @@ func (p *cliPrinter) Error(err error) {
 		} else if appErr.Err != nil {
 			msg += fmt.Sprintf(" (%v)", appErr.Err)
 		}
-		fmt.Println(styleError.Render("✖ " + msg))
+		msg = cleanTagPrefix(msg, "ERROR")
+		fmt.Printf("[%s] %s\n", styleError.Render("ERROR"), msg)
 	} else if err != nil {
-		fmt.Println(styleError.Render(fmt.Sprintf("✖ %v", err)))
+		msg := cleanTagPrefix(fmt.Sprintf("%v", err), "ERROR")
+		fmt.Printf("[%s] %s\n", styleError.Render("ERROR"), msg)
 	}
 }
 
 func (p *cliPrinter) Warning(msg string) {
-	fmt.Println(styleWarning.Render("⚠ " + msg))
+	msg = cleanTagPrefix(msg, "WARNING")
+	fmt.Printf("[%s] %s\n", styleWarning.Render("WARNING"), msg)
 }
 
 func (p *cliPrinter) Info(msg string) {
-	fmt.Println(styleInfo.Render("ℹ " + msg))
+	msg = cleanTagPrefix(msg, "INFO")
+	fmt.Printf("[%s] %s\n", styleInfo.Render("INFO"), msg)
 }
 
 func (p *cliPrinter) Print(msg string) {
