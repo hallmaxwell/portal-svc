@@ -14,9 +14,13 @@ func TestProcessRuleSets(t *testing.T) {
 	tmpDir := t.TempDir()
 	srsDir := filepath.Join(tmpDir, "srs")
 
-	os.MkdirAll(srsDir, 0755)
+	if err := os.MkdirAll(srsDir, 0755); err != nil {
+		t.Fatalf("failed to mkdir: %v", err)
+	}
 	testFile := filepath.Join(srsDir, "geosite-test.srs")
-	os.WriteFile(testFile, []byte("dummy data"), 0644)
+	if err := os.WriteFile(testFile, []byte("dummy data"), 0644); err != nil {
+		t.Fatalf("failed to write file: %v", err)
+	}
 
 	newConfig, err := ProcessRuleSets(configJSONFail, srsDir)
 	if err != nil {

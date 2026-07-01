@@ -1,7 +1,6 @@
 package main
 
 import (
-	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -19,10 +18,7 @@ const (
 )
 
 func runRemote(templatePath string) {
-	if err := shared.InitLogFiles(); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to initialize log files: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(shared.InitLogFiles(), "Failed to initialize log files: %v")
 
 	envMap := shared.ProcessEnvMap()
 	content, err := util.RenderConfigTemplate(templatePath, envMap)
@@ -98,11 +94,7 @@ func handleRenderCmd(args []string) {
 	indexSrs := renderCmd.Bool("index-srs", false, "Download and index .srs files")
 
 	err := renderCmd.Parse(args)
-	if errors.Is(err, flag.ErrHelp) {
-		os.Exit(0)
-	} else if err != nil {
-		os.Exit(1)
-	}
+	shared.HandleFlagError(err)
 
 	if *configPath == "" || *outPath == "" {
 		fmt.Println("Error: --config and --out are required.")
@@ -112,38 +104,23 @@ func handleRenderCmd(args []string) {
 
 	envMap := shared.ProcessEnvMap()
 	content, err := util.RenderConfigTemplate(*configPath, envMap)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to render template: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(err, "Failed to render template: %v", err)
 
 	if *ci {
 		content, err = util.InjectCIRules(content)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to inject CI rules: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(err, "Failed to inject CI rules: %v", err)
 	}
 
 	if *indexSrs {
 		cwd, err := os.Getwd()
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to get current working directory: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(err, "Failed to get current working directory: %v", err)
 		srsDir := filepath.Join(cwd, "srs")
 		content, err = shared.ProcessRuleSets(content, srsDir)
-		if err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to process rule sets: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(err, "Failed to process rule sets: %v", err)
 		fmt.Printf("Successfully indexed rule sets to %s\n", srsDir)
 	}
 
-	if err := os.WriteFile(*outPath, []byte(content), 0600); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write output file: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(os.WriteFile(*outPath, []byte(content), 0600), "Failed to write output file: %v")
 
 	fmt.Printf("Successfully rendered configuration to %s\n", *outPath)
 }
@@ -163,33 +140,20 @@ func handleGenerateCmd(args []string) {
 	generateCmd.Usage = printGenerateUsage
 
 	err := generateCmd.Parse(args)
-	if errors.Is(err, flag.ErrHelp) {
-		os.Exit(0)
-	} else if err != nil {
-		os.Exit(1)
-	}
+	shared.HandleFlagError(err)
 
 	cwd, err := os.Getwd()
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to get current directory: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(err, "Failed to get current directory: %v", err)
 
 	tmplDir := filepath.Join(cwd, "templates")
-	if err := os.MkdirAll(tmplDir, 0755); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to create templates directory: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(os.MkdirAll(tmplDir, 0755), "Failed to create templates directory: %v")
 
 	tmplPath := filepath.Join(tmplDir, "remote_config.tmpl.json")
 	if _, err := os.Stat(tmplPath); os.IsNotExist(err) {
 		// Download from GitHub
 		fmt.Println("Downloading latest remote_config.tmpl.json...")
 		url := "https://raw.githubusercontent.com/hallmaxwell/portal-svc/main/templates/remote_config.tmpl.json"
-		if err := shared.DownloadFile(url, tmplPath); err != nil {
-			fmt.Fprintf(os.Stderr, "Failed to download template: %v\n", err)
-			os.Exit(1)
-		}
+		shared.CheckError(shared.DownloadFile(url, tmplPath), "Failed to download template: %v")
 		fmt.Println("Downloaded template to", tmplPath)
 	} else {
 		fmt.Println("Template already exists at", tmplPath)
@@ -217,10 +181,7 @@ PROXY_USERNAME=
 PROXY_PASSWORD=
 `, uuid, privKey, shortID)
 
-	if err := os.WriteFile(envPath, []byte(envContent), 0600); err != nil {
-		fmt.Fprintf(os.Stderr, "Failed to write .env file: %v\n", err)
-		os.Exit(1)
-	}
+	shared.CheckError(os.WriteFile(envPath, []byte(envContent), 0600), "Failed to write .env file: %v")
 
 	fmt.Println("\n========================================================")
 	fmt.Println(" Initialization Complete! Server .env file created.")

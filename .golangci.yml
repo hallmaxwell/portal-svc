@@ -1,6 +1,7 @@
 linters:
   enable:
     - errcheck
+    - dupl
 
 linters-settings:
   errcheck:
@@ -11,3 +12,5 @@ linters-settings:
       - fmt.Fprint
       - fmt.Fprintf
       - fmt.Fprintln
+  dupl:
+    threshold: 100
