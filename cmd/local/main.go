@@ -528,6 +528,14 @@ func main() {
 	}
 
 	if isServiceCommand(cmd) {
+		// Check for help flag
+		for _, arg := range os.Args[2:] {
+			if arg == "-h" || arg == "--help" {
+				ui.PrintHelp(p, ui.HelpConfigJSON, cmd)
+				os.Exit(0)
+			}
+		}
+
 		_, configPath := splitServiceArgs(os.Args[2:])
 
 		svcConfig := &service.Config{
