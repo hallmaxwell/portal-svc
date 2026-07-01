@@ -22,7 +22,7 @@ func NewPrinter() Printer {
 }
 
 func (p *cliPrinter) Success(msg string) {
-	fmt.Println(styleSuccess.Render(msg))
+	fmt.Println(styleSuccess.Render("✔ " + msg))
 }
 
 func (p *cliPrinter) Error(err error) {
@@ -34,22 +34,18 @@ func (p *cliPrinter) Error(err error) {
 		} else if appErr.Err != nil {
 			msg += fmt.Sprintf(" (%v)", appErr.Err)
 		}
-		if appErr.Level == SeverityWarning {
-			fmt.Println(styleWarning.Render(msg))
-		} else {
-			fmt.Println(styleError.Render(msg))
-		}
+		fmt.Println(styleError.Render("✖ " + msg))
 	} else if err != nil {
-		fmt.Println(styleError.Render(fmt.Sprintf("%v", err)))
+		fmt.Println(styleError.Render(fmt.Sprintf("✖ %v", err)))
 	}
 }
 
 func (p *cliPrinter) Warning(msg string) {
-	fmt.Println(styleWarning.Render(msg))
+	fmt.Println(styleWarning.Render("⚠ " + msg))
 }
 
 func (p *cliPrinter) Info(msg string) {
-	fmt.Println(styleInfo.Render(msg))
+	fmt.Println(styleInfo.Render("ℹ " + msg))
 }
 
 func (p *cliPrinter) Print(msg string) {

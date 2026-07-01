@@ -204,12 +204,6 @@ func main() {
 	}
 
 	// Parse flags for main runner mode (run command)
-	for _, arg := range os.Args[2:] {
-		if arg == "-h" || arg == "--help" {
-			ui.PrintHelp(p, ui.HelpConfigJSON, "run")
-			os.Exit(0)
-		}
-	}
 	configPath := defaultRemoteConfig
 	for i := 1; i < len(os.Args); i++ {
 		if os.Args[i] == "--config" && i+1 < len(os.Args) {

@@ -24,6 +24,7 @@ import (
 	"github.com/nxadm/tail"
 )
 
+
 const (
 	defaultConfig = "templates/local_config.tmpl.json"
 	tempConfig    = "local.config.run.json"
@@ -515,12 +516,6 @@ func main() {
 	}
 
 	if cmd == "run" {
-		for _, arg := range os.Args[2:] {
-			if arg == "-h" || arg == "--help" {
-				ui.PrintHelp(p, ui.HelpConfigJSON, "run")
-				os.Exit(0)
-			}
-		}
 		configPath := defaultConfig
 		// Quick parse for --config
 		for i, arg := range os.Args {
@@ -574,7 +569,7 @@ func main() {
 	}
 
 	p.Error(ui.NewAppError("UNKNOWN_CMD", fmt.Sprintf("Error: unknown command %q", cmd), "", ui.SeverityError, nil))
-	ui.PrintHelp(p, ui.HelpConfigJSON, "main_local")
+	printMainUsage()
 	os.Exit(1)
 }
 

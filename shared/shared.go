@@ -145,6 +145,8 @@ func WriteLog(level, prefix, msg string, printToStdout bool) {
 			if _, err := os.Stderr.WriteString(prefix + " " + msg + "\n"); err != nil {
 				return
 			}
+		} else {
+
 		}
 	}
 }
