@@ -24,6 +24,7 @@ import (
 	"github.com/nxadm/tail"
 )
 
+
 const (
 	defaultConfig = "templates/local_config.tmpl.json"
 	tempConfig    = "local.config.run.json"
