@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"portal-svc/ui"
 	"strings"
 	"time"
 )
@@ -16,7 +17,7 @@ import (
 func ProcessRuleSets(configJSON string, srsDir string) (string, error) {
 	var config map[string]interface{}
 	if err := json.Unmarshal([]byte(configJSON), &config); err != nil {
-		return "", fmt.Errorf("failed to parse config JSON: %w", err)
+		return "", ui.NewAppError("CONFIG_PARSE_ERR", "Failed to parse config JSON", err.Error(), ui.SeverityError, err)
 	}
 
 	routeVal, ok := config["route"]
@@ -39,7 +40,7 @@ func ProcessRuleSets(configJSON string, srsDir string) (string, error) {
 	}
 
 	if err := os.MkdirAll(srsDir, 0755); err != nil {
-		return "", fmt.Errorf("failed to create srs directory %s: %w", srsDir, err)
+		return "", ui.NewAppError("DIR_CREATE_ERR", fmt.Sprintf("Failed to create srs directory %s", srsDir), err.Error(), ui.SeverityError, err)
 	}
 
 	modified := false
@@ -91,7 +92,7 @@ func ProcessRuleSets(configJSON string, srsDir string) (string, error) {
 	// Re-marshal the modified configuration
 	newConfigBytes, err := json.MarshalIndent(config, "", "  ")
 	if err != nil {
-		return "", fmt.Errorf("failed to re-marshal modified config: %w", err)
+		return "", ui.NewAppError("CONFIG_MARSHAL_ERR", "Failed to re-marshal modified config", err.Error(), ui.SeverityError, err)
 	}
 
 	return string(newConfigBytes), nil
@@ -114,7 +115,7 @@ func DownloadFile(url string, dest string) error {
 	defer resp.Body.Close()
 
 	if resp.StatusCode != http.StatusOK {
-		return fmt.Errorf("bad status: %s", resp.Status)
+		return ui.NewAppError("HTTP_ERR", fmt.Sprintf("Failed to download SRS file (bad status: %s)", resp.Status), "", ui.SeverityError, nil)
 	}
 
 	tmpDest := dest + ".tmp"

@@ -1,0 +1,124 @@
+{
+  "main_local": {
+    "usage": "portal-svc [command] [flags]",
+    "description": "Portal Daemon background service with auto-recovery",
+    "flags": [
+      {
+        "name": "-h, --help",
+        "description": "help for portal-local"
+      }
+    ]
+  },
+  "install": {
+    "usage": "portal-svc install",
+    "description": "Install the service to the system manager"
+  },
+  "start": {
+    "usage": "portal-svc start",
+    "description": "Start the installed background service"
+  },
+  "stop": {
+    "usage": "portal-svc stop",
+    "description": "Stop the background service"
+  },
+  "restart": {
+    "usage": "portal-svc restart",
+    "description": "Restart the background service"
+  },
+  "uninstall": {
+    "usage": "portal-svc uninstall",
+    "description": "Uninstall the service from the system manager"
+  },
+  "status": {
+    "usage": "portal-svc status",
+    "description": "Query the current service status"
+  },
+  "logs": {
+    "usage": "portal-svc logs [flags]",
+    "description": "View service logs",
+    "flags": [
+      {
+        "name": "-f, --follow",
+        "description": "Follow log output"
+      },
+      {
+        "name": "-n, --lines int",
+        "description": "Number of lines to show (default 100)"
+      },
+      {
+        "name": "-h, --help",
+        "description": "help for logs"
+      }
+    ]
+  },
+  "generate": {
+    "usage": "portal-svc generate [flags]",
+    "description": "Generate configuration template and .env file",
+    "flags": [
+      {
+        "name": "-h, --help",
+        "description": "help for generate"
+      }
+    ]
+  },
+  "render": {
+    "usage": "portal-svc render [flags]",
+    "description": "Render a configuration template with environment variables",
+    "flags": [
+      {
+        "name": "--config string",
+        "description": "Path to the input template file"
+      },
+      {
+        "name": "--out string",
+        "description": "Path to the output JSON file"
+      },
+      {
+        "name": "--ci",
+        "description": "Inject CI rules (ci-direct-out, disable auto_route)"
+      },
+      {
+        "name": "--index-srs",
+        "description": "Download and index .srs files to local srs/ folder"
+      },
+      {
+        "name": "-h, --help",
+        "description": "help for render"
+      }
+    ]
+  },
+  "tweak": {
+    "usage": "portal-svc tweak [flags]",
+    "description": "Interactive TUI to modify configuration settings",
+    "flags": [
+      {
+        "name": "--config string",
+        "description": "Path to the input template file (default \"templates/local_config.tmpl.json\")"
+      },
+      {
+        "name": "-h, --help",
+        "description": "help for tweak"
+      }
+    ]
+  },
+  "main_remote": {
+    "usage": "portal-svc [command] [flags]",
+    "description": "Portal Remote Node background service",
+    "flags": [
+      {
+        "name": "-h, --help",
+        "description": "help for portal-svc"
+      }
+    ]
+  },
+  "run": {
+    "usage": "portal-svc run [flags]",
+    "description": "Run the background service",
+    "flags": [
+      {
+        "name": "--config string",
+        "description": "Path to template config"
+      }
+    ]
+  }
+}

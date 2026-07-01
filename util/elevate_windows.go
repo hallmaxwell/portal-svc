@@ -7,6 +7,7 @@ import (
 	"golang.org/x/sys/windows"
 	"io"
 	"os"
+	"portal-svc/ui"
 	"strings"
 	"syscall"
 	"time"
@@ -126,7 +127,7 @@ func RunMeElevated() error {
 
 	ret, _, errCode := shellExecuteExWProc.Call(uintptr(unsafe.Pointer(&sei)))
 	if ret == 0 {
-		return fmt.Errorf("ShellExecuteExW failed: %v", errCode)
+		return ui.NewAppError("ELEVATE_FAILED", "Failed to elevate process", fmt.Sprintf("ShellExecuteExW failed: %v", errCode), ui.SeverityError, errCode)
 	}
 
 	if sei.HProcess != 0 {
@@ -172,11 +173,11 @@ func RunMeElevated() error {
 		err = syscall.GetExitCodeProcess(sei.HProcess, &exitCode)
 		syscall.CloseHandle(sei.HProcess)
 		if err != nil {
-			return fmt.Errorf("failed to get exit code: %v", err)
+			return ui.NewAppError("ELEVATE_EXIT_CODE_ERR", "Failed to get exit code of elevated process", err.Error(), ui.SeverityError, err)
 		}
 
 		if exitCode != 0 {
-			return fmt.Errorf("elevated process exited with code %d", exitCode)
+			return ui.NewAppError("ELEVATE_EXIT_ERR", fmt.Sprintf("Elevated process exited with code %d", exitCode), "", ui.SeverityError, nil)
 		}
 	}
 
