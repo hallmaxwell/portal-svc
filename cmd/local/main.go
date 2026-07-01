@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"log"
@@ -268,7 +269,7 @@ func handleLogsCmd(args []string) {
 	follow := logsCmd.Bool("f", false, "")
 
 	err := logsCmd.Parse(args)
-	if err == flag.ErrHelp {
+	if errors.Is(err, flag.ErrHelp) {
 		os.Exit(0)
 	} else if err != nil {
 		os.Exit(1)
@@ -330,7 +331,7 @@ func handleGenerateCmd(args []string) {
 	generateCmd.Usage = printGenerateUsage
 
 	err := generateCmd.Parse(args)
-	if err == flag.ErrHelp {
+	if errors.Is(err, flag.ErrHelp) {
 		os.Exit(0)
 	} else if err != nil {
 		os.Exit(1)
@@ -362,13 +363,12 @@ func handleGenerateCmd(args []string) {
 	} else if !os.IsNotExist(err) {
 		fmt.Fprintf(os.Stderr, "Error: could not inspect template file '%s': %v\n", outPath, err)
 		os.Exit(1)
-	} else {
-		if err := os.WriteFile(outPath, tmplData, 0644); err != nil {
-			fmt.Fprintf(os.Stderr, "Error: could not write template file: %v\n", err)
-			os.Exit(1)
-		}
-		fmt.Printf("Successfully released '%s' to '%s'.\n", tmplName, tmplDir)
 	}
+	if err := os.WriteFile(outPath, tmplData, 0644); err != nil {
+		fmt.Fprintf(os.Stderr, "Error: could not write template file: %v\n", err)
+		os.Exit(1)
+	}
+	fmt.Printf("Successfully released '%s' to '%s'.\n", tmplName, tmplDir)
 
 	envPath := filepath.Join(baseDir, ".env")
 	if _, err := os.Stat(envPath); err == nil {
@@ -423,7 +423,7 @@ func handleRenderCmd(args []string) {
 	indexSrs := renderCmd.Bool("index-srs", false, "Download and index .srs files")
 
 	err := renderCmd.Parse(args)
-	if err == flag.ErrHelp {
+	if errors.Is(err, flag.ErrHelp) {
 		os.Exit(0)
 	} else if err != nil {
 		os.Exit(1)
@@ -490,7 +490,7 @@ func handleTweakCmd(args []string) {
 	configPath := tweakCmd.String("config", defaultConfig, "Path to the input template file")
 
 	err := tweakCmd.Parse(args)
-	if err == flag.ErrHelp {
+	if errors.Is(err, flag.ErrHelp) {
 		os.Exit(0)
 	} else if err != nil {
 		os.Exit(1)

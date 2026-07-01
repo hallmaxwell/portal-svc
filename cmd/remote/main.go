@@ -1,6 +1,7 @@
 package main
 
 import (
+	"errors"
 	"flag"
 	"fmt"
 	"os"
@@ -97,7 +98,7 @@ func handleRenderCmd(args []string) {
 	indexSrs := renderCmd.Bool("index-srs", false, "Download and index .srs files")
 
 	err := renderCmd.Parse(args)
-	if err == flag.ErrHelp {
+	if errors.Is(err, flag.ErrHelp) {
 		os.Exit(0)
 	} else if err != nil {
 		os.Exit(1)
@@ -162,7 +163,7 @@ func handleGenerateCmd(args []string) {
 	generateCmd.Usage = printGenerateUsage
 
 	err := generateCmd.Parse(args)
-	if err == flag.ErrHelp {
+	if errors.Is(err, flag.ErrHelp) {
 		os.Exit(0)
 	} else if err != nil {
 		os.Exit(1)
