@@ -2,6 +2,7 @@ package tweak
 
 import (
 	"fmt"
+	"portal-svc/ui"
 
 	"github.com/charmbracelet/bubbles/table"
 	tea "github.com/charmbracelet/bubbletea"
@@ -189,7 +190,7 @@ func RunTUI(configJSON string, overridePath string) error {
 
 	settings := ExtractSettings(configJSON)
 	if len(settings) == 0 {
-		return fmt.Errorf("no known configurable settings found in the current configuration")
+		return ui.NewAppError("TWEAK_NO_SETTINGS", "No known configurable settings found in the current configuration", "", ui.SeverityWarning, nil)
 	}
 
 	m := InitialModel(settings, overrides)

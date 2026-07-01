@@ -6,6 +6,7 @@ import (
 	"os"
 	"os/exec"
 	"path/filepath"
+	"portal-svc/ui"
 	"runtime"
 	"strings"
 	"sync"
@@ -29,7 +30,7 @@ var (
 func ExecutableDir() (string, error) {
 	exe, err := os.Executable()
 	if err != nil {
-		return "", fmt.Errorf("failed to get executable path: %w", err)
+		return "", ui.NewAppError("EXEC_PATH_ERR", "Failed to get executable path", err.Error(), ui.SeverityFatal, err)
 	}
 	return filepath.Dir(exe), nil
 }
@@ -79,7 +80,7 @@ func InitLogFiles() error {
 	}
 
 	if err := os.MkdirAll(filepath.Dir(InfoLogFilePath), 0700); err != nil {
-		return fmt.Errorf("failed to create logs directory: %w", err)
+		return ui.NewAppError("DIR_CREATE_ERR", "Failed to create logs directory", err.Error(), ui.SeverityFatal, err)
 	}
 
 	infoLogger = &lumberjack.Logger{
@@ -100,18 +101,18 @@ func InitLogFiles() error {
 
 	// Always clear logs on start
 	if err := infoLogger.Rotate(); err != nil {
-		return fmt.Errorf("failed to rotate access log: %w", err)
+		return ui.NewAppError("LOG_ROTATE_ERR", "Failed to rotate access log", err.Error(), ui.SeverityError, err)
 	}
 	if err := errorLogger.Rotate(); err != nil {
-		return fmt.Errorf("failed to rotate error log: %w", err)
+		return ui.NewAppError("LOG_ROTATE_ERR", "Failed to rotate error log", err.Error(), ui.SeverityError, err)
 	}
 
 	// Ensure empty logs exist
 	if err := os.WriteFile(InfoLogFilePath, []byte(""), 0600); err != nil {
-		return fmt.Errorf("failed to initialize access log: %w", err)
+		return ui.NewAppError("LOG_INIT_ERR", "Failed to initialize access log", err.Error(), ui.SeverityFatal, err)
 	}
 	if err := os.WriteFile(ErrorLogFilePath, []byte(""), 0600); err != nil {
-		return fmt.Errorf("failed to initialize error log: %w", err)
+		return ui.NewAppError("LOG_INIT_ERR", "Failed to initialize error log", err.Error(), ui.SeverityFatal, err)
 	}
 
 	return nil
@@ -145,7 +146,7 @@ func WriteLog(level, prefix, msg string, printToStdout bool) {
 				return
 			}
 		} else {
-			fmt.Println(prefix + " " + msg)
+
 		}
 	}
 }
@@ -196,7 +197,7 @@ func KillExistingSingBox() {
 func EnsureBundledSingBox(baseDir string) error {
 	singBoxPath := BundledSingBoxPath(baseDir)
 	if _, err := os.Stat(singBoxPath); err != nil {
-		return fmt.Errorf("sing-box executable not found at %s", singBoxPath)
+		return ui.NewAppError("SING_BOX_MISSING", fmt.Sprintf("sing-box executable not found at %s", singBoxPath), "", ui.SeverityFatal, nil)
 	}
 	return nil
 }
@@ -255,7 +256,7 @@ func CaptureElevatedOut() {
 				os.Stderr = f
 				log.SetOutput(f)
 			} else {
-				fmt.Fprintf(os.Stderr, "Failed to redirect elevated output to %s: %v\n", outFile, err)
+				log.Printf("Failed to redirect elevated output to %s: %v\n", outFile, err)
 			}
 			os.Args = append(os.Args[:i], os.Args[i+1:]...)
 			break
