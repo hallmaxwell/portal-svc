@@ -41,7 +41,7 @@ jobs:
           go build -trimpath -o /dev/null ./cmd/local/...
 
           unset GOOS
-          go build -o portal-local-bin ./cmd/local/main.go
+          go build -o portal-svc-bin ./cmd/local/main.go
           go build -o portal-remote-bin ./cmd/remote/main.go
       
       - name: Install sing-box
@@ -55,7 +55,7 @@ jobs:
       - name: Test Local Node (Dock)
         run: |
           cd ${{ github.workspace }}
-          ./portal-local-bin render --config templates/local_config.tmpl.json --out /tmp/local_run.json --ci
+          ./portal-svc-bin render --config templates/local_config.tmpl.json --out /tmp/local_run.json --ci
           
           sing-box check -c /tmp/local_run.json
           sudo timeout 5 sing-box run -c /tmp/local_run.json > local.log 2>&1 || STATUS=$?

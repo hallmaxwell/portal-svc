@@ -1,37 +1,37 @@
 {
   "main_local": {
-    "usage": "portal-local [command] [flags]",
+    "usage": "portal-svc [command] [flags]",
     "description": "Portal Daemon background service with auto-recovery",
     "flags": [
-      { "name": "-h, --help", "description": "help for portal-local" }
+      { "name": "-h, --help", "description": "help for portal-svc" }
     ]
   },
   "install": {
-    "usage": "portal-local install",
+    "usage": "portal-svc install",
     "description": "Install the service to the system manager"
   },
   "start": {
-    "usage": "portal-local start",
+    "usage": "portal-svc start",
     "description": "Start the installed background service"
   },
   "stop": {
-    "usage": "portal-local stop",
+    "usage": "portal-svc stop",
     "description": "Stop the background service"
   },
   "restart": {
-    "usage": "portal-local restart",
+    "usage": "portal-svc restart",
     "description": "Restart the background service"
   },
   "uninstall": {
-    "usage": "portal-local uninstall",
+    "usage": "portal-svc uninstall",
     "description": "Uninstall the service from the system manager"
   },
   "status": {
-    "usage": "portal-local status",
+    "usage": "portal-svc status",
     "description": "Query the current service status"
   },
   "logs": {
-    "usage": "portal-local logs [flags]",
+    "usage": "portal-svc logs [flags]",
     "description": "View service logs",
     "flags": [
       { "name": "-f, --follow", "description": "Follow log output" },
@@ -40,14 +40,14 @@
     ]
   },
   "generate": {
-    "usage": "portal-local generate [flags] OR portal-svc generate [flags]",
+    "usage": "portal-svc generate [flags]",
     "description": "Generate configuration template and .env file",
     "flags": [
       { "name": "-h, --help", "description": "help for generate" }
     ]
   },
   "render": {
-    "usage": "portal-local render [flags] OR portal-svc render [flags]",
+    "usage": "portal-svc render [flags]",
     "description": "Render a configuration template with environment variables",
     "flags": [
       { "name": "--config string", "description": "Path to the input template file" },
@@ -58,7 +58,7 @@
     ]
   },
   "tweak": {
-    "usage": "portal-local tweak [flags]",
+    "usage": "portal-svc tweak [flags]",
     "description": "Interactive TUI to modify configuration settings",
     "flags": [
       { "name": "--config string", "description": "Path to the input template file (default \"templates/local_config.tmpl.json\")" },
