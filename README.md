@@ -4,7 +4,7 @@ Welcome to **Portal-SVC**! This project provides a robust, auto-recovering backg
 
 To accommodate different environments, Portal-SVC is distributed in two distinct versions:
 1. **Local Client (`portal-svc`)**: A system service manager designed to run directly on your host machine (Windows, Linux, macOS).
-2. **Remote Node (`portal-svc` Docker Image)**: A lightweight, containerized version designed to run as a server-side node or inside isolated environments, deployed easily via `docker-compose`.
+2. **Remote Node (`portal-svc` Docker Image)**: A lightweight, containerized version designed to run as a server-side node or inside isolated environments.
 
 This guide will walk you through acquiring, initializing, and running both versions.
 
@@ -104,13 +104,35 @@ To manage the background service, use the following commands:
 
 The Remote Node is designed to run continuously in the background using Docker.
 
-Because it handles low-level network routing, **it is highly recommended to run the container using Host Network Mode (`network_mode: host`)**. It also needs access to the `.env` file and `templates` directory you generated earlier.
+Because it handles low-level network routing, **it is highly recommended to run the container using Host Network Mode (`--network host`)**. It also needs access to the `.env` file and `templates` directory you generated earlier.
 
-The recommended and simplest way to run the Remote Node is via `docker-compose`.
+### Using `docker run` (Detailed)
+
+To run the container directly via the CLI, use the following command. Note the specific volume mounts required:
+
+```bash
+docker run -d \
+  --name portal-node \
+  --restart always \
+  --network host \
+  --env-file .env \
+  -v $(pwd)/templates/remote_config.tmpl.json:/app/templates/remote_config.tmpl.json \
+  -v $(pwd)/srs_cache:/app/srs \
+  -v /etc/localtime:/etc/localtime:ro \
+  ghcr.io/hallmaxwell/portal-svc:latest
+```
+
+**Explanation of the arguments:**
+- `-d`: Runs the container in the background (detached mode).
+- `--network host`: Shares the host's network stack with the container, essential for correct routing.
+- `--env-file .env`: Loads the secrets you generated earlier.
+- `-v $(pwd)/templates/...`: Mounts your local template file into the container.
+- `-v $(pwd)/srs_cache:/app/srs`: Caches downloaded routing rules locally so they persist across container restarts.
+- `-v /etc/localtime...`: Syncs the container's timezone with the host machine.
 
 ### Using `docker-compose`
 
-Create a `docker-compose.yml` file in your working directory with the following content:
+For a more maintainable setup, you can use `docker-compose`. Create a `docker-compose.yml` file with the following content:
 
 ```yaml
 services:
@@ -126,22 +148,9 @@ services:
       - /etc/localtime:/etc/localtime:ro
 ```
 
-**Explanation of the configuration:**
-- `network_mode: host`: Shares the host's network stack with the container, essential for correct routing.
-- `env_file: .env`: Loads the secrets you generated earlier.
-- `volumes`:
-  - Mounts your local template file into the container.
-  - Caches downloaded routing rules (`srs_cache`) locally so they persist across container restarts.
-  - Syncs the container's timezone with the host machine.
-
 Then, simply start the service by running:
 ```bash
 docker-compose up -d
-```
-
-To stop the service, run:
-```bash
-docker-compose down
 ```
 
 ---
