@@ -3,7 +3,7 @@
 Welcome to **Portal-SVC**! This project provides a robust, auto-recovering background service daemon for network routing and proxying, built around `sing-box`.
 
 To accommodate different environments, Portal-SVC is distributed in two distinct versions:
-1. **Local Client (`portal-local`)**: A system service manager designed to run directly on your host machine (Windows, Linux, macOS).
+1. **Local Client (`portal-svc`)**: A system service manager designed to run directly on your host machine (Windows, Linux, macOS).
 2. **Remote Node (`portal-svc` Docker Image)**: A lightweight, containerized version designed to run as a server-side node or inside isolated environments.
 
 This guide will walk you through acquiring, initializing, and running both versions.
@@ -16,7 +16,7 @@ This guide will walk you through acquiring, initializing, and running both versi
 The Local Client is provided as a pre-compiled standalone binary. You do not need any additional software to run it.
 - **Download**: Head over to the [GitHub Releases](https://github.com/hallmaxwell/portal-svc/releases) page.
 - Choose the archive that matches your operating system and architecture (e.g., `portal-svc-vX.Y.Z-windows-amd64.zip`, `portal-svc-vX.Y.Z-linux-amd64.tar.gz`).
-- Extract the archive to a permanent location on your machine. You will find the executable named `portal-local` (or `portal-local.exe` on Windows).
+- Extract the archive to a permanent location on your machine. You will find the executable named `portal-svc` (or `portal-svc.exe` on Windows).
 
 ### Remote Node (Docker Image)
 The Remote Node is distributed as a Docker image hosted on the GitHub Container Registry (GHCR).
@@ -27,15 +27,28 @@ The Remote Node is distributed as a Docker image hosted on the GitHub Container 
 
 ---
 
-## 2. Initialization: Generating Configuration
+## 2. Installing the Local Client
+
+For the Local Client, it is highly recommended to install the service first. Installing registers the binary with your operating system's service manager (e.g., systemd, Windows Services) and often places it in your system's PATH. This means you can call `portal-svc` globally from any terminal without needing to prepend `./`.
+
+To install the service:
+```bash
+./portal-svc install
+```
+*(Note: On Windows, this will automatically request Administrator privileges if required; on Linux/macOS, you may need to prefix it with `sudo`)*.
+
+---
+
+## 3. Initialization: Generating Configuration
 
 Both versions require an `.env` file containing secrets and a JSON template file for configuration. Fortunately, the binary includes a built-in command to generate these files for you.
 
-Before starting the service for the first time, run the `generate` command in your working directory.
+Before starting the service, run the `generate` command in your working directory.
 
 **For Local Client:**
+*(If you installed the service in the previous step, you can just use `portal-svc`)*
 ```bash
-./portal-local generate
+portal-svc generate
 ```
 
 **For Remote Node (via Docker):**
@@ -51,49 +64,43 @@ This command will:
 
 ---
 
-## 3. Running the Local Client
+## 4. Running the Local Client
 
-The Local Client acts as a system service. It can install itself so that it starts automatically when your machine boots.
-
-Here are the primary commands you will use:
+With the service installed and configuration generated, you can now manage and start your local client.
 
 ### Interactive Tweaking
 Before starting, you can interactively modify common configuration settings using a Terminal UI:
 ```bash
-./portal-local tweak
+portal-svc tweak
 ```
 
 ### Service Management Commands
-To manage the background service, use the following commands. *(Note: On Windows, these commands will automatically request Administrator privileges if required; on Linux/macOS, you may need to prefix them with `sudo`)*.
+To manage the background service, use the following commands:
 
-- **Install the service** (registers it with your OS, e.g., systemd or Windows Services):
-  ```bash
-  ./portal-local install
-  ```
 - **Start the service**:
   ```bash
-  ./portal-local start
+  portal-svc start
   ```
 - **Check the status**:
   ```bash
-  ./portal-local status
+  portal-svc status
   ```
 - **View logs** (useful for troubleshooting):
   ```bash
-  ./portal-local logs -f
+  portal-svc logs -f
   ```
 - **Stop the service**:
   ```bash
-  ./portal-local stop
+  portal-svc stop
   ```
-- **Uninstall the service**:
+- **Uninstall the service** (if you wish to remove it from your system):
   ```bash
-  ./portal-local uninstall
+  portal-svc uninstall
   ```
 
 ---
 
-## 4. Running the Remote Node (Docker)
+## 5. Running the Remote Node (Docker)
 
 The Remote Node is designed to run continuously in the background using Docker.
 
@@ -148,13 +155,13 @@ docker-compose up -d
 
 ---
 
-## 5. Additional Utilities
+## 6. Additional Utilities
 
 Both versions support rendering templates for testing purposes. If you want to verify what the final JSON configuration will look like after environment variables are injected, use the `render` command:
 
 ```bash
 # Local Client
-./portal-local render --config templates/local_config.tmpl.json --out final_config.json
+portal-svc render --config templates/local_config.tmpl.json --out final_config.json
 
 # Remote Node
 docker run --rm \
