@@ -415,17 +415,37 @@ func handleTweakCmd(args []string) {
 	shared.CheckError(err, "Failed to run TUI: %v", err)
 }
 
-func splitServiceArgs(args []string) (flagArgs []string, configPath string) {
+func splitServiceArgs(args []string) (flagArgs []string, configPath string, envVars map[string]string) {
 	configPath = defaultConfig
+	envVars = make(map[string]string)
+
 	for i := 0; i < len(args); i++ {
 		if args[i] == "--config" && i+1 < len(args) {
 			configPath = args[i+1]
 			i++
+		} else if (args[i] == "-e" || args[i] == "--env") && i+1 < len(args) {
+			val := args[i+1]
+			parts := strings.SplitN(val, "=", 2)
+			if len(parts) == 2 {
+				envVars[parts[0]] = parts[1]
+			}
+			i++
+		} else if strings.HasPrefix(args[i], "-e=") || strings.HasPrefix(args[i], "--env=") {
+			var val string
+			if strings.HasPrefix(args[i], "-e=") {
+				val = strings.TrimPrefix(args[i], "-e=")
+			} else {
+				val = strings.TrimPrefix(args[i], "--env=")
+			}
+			parts := strings.SplitN(val, "=", 2)
+			if len(parts) == 2 {
+				envVars[parts[0]] = parts[1]
+			}
 		} else {
 			flagArgs = append(flagArgs, args[i])
 		}
 	}
-	return flagArgs, configPath
+	return flagArgs, configPath, envVars
 }
 
 func runServiceCommand(s service.Service, svcCmd string) {
@@ -536,7 +556,7 @@ func main() {
 			}
 		}
 
-		_, configPath := splitServiceArgs(os.Args[2:])
+		_, configPath, envVars := splitServiceArgs(os.Args[2:])
 
 		svcConfig := &service.Config{
 			Name:        serviceName,
@@ -548,6 +568,10 @@ func main() {
 				"OnFailureResetPeriod":   600,
 			},
 			Arguments: []string{"run", "--config", configPath},
+		}
+
+		if len(envVars) > 0 {
+			svcConfig.EnvVars = envVars
 		}
 
 		prg := &program{templatePath: configPath}
